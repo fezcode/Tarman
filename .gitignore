@@ -1,0 +1,17 @@
+/build/
+*.o
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.DMP
+.cache/
+compile_commands.json
+
+# Dev-time screenshots at the repo root
+/*.png
+!/banner-image.png
+*.log
+
+# Installer output (published as GitHub release assets)
+/dist/

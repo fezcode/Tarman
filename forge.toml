@@ -1,0 +1,116 @@
+# Tarman installer -- built with Forge (https://github.com/fezcode/Forge)
+#
+#   .\installer.ps1                build + package dist/installer/Tarman-Setup-<version>.exe
+#
+# [app] version follows src/version.h; .\version.ps1 keeps them in step.
+# Everything else reads it back as ${app.version}, so a release edits one line.
+
+[app]
+name    = "Tarman"
+version = "0.1.0"
+id      = "com.fezcode.tarman"
+icon    = "resources/tarman.ico"
+
+[meta]
+publisher   = "Fezcode"
+homepage    = "https://github.com/fezcode/Tarman"
+support_url = "https://github.com/fezcode/Tarman/issues"
+comments    = "Task manager and resource monitor with a 10-minute moving window"
+
+[ui]
+# available themes: atelier, aurora, console, mica, vellum
+theme        = "mica"
+window_title = "Tarman ${app.version} Setup"
+
+[install]
+# Per-user install: no elevation needed to install, and Tarman's
+# "Run as admin" relaunches itself elevated on demand.
+default_dir = "${LOCALAPPDATA}/Programs/Tarman"
+
+[uninstall]
+keep = []
+# settings.ini and the activity logs live here; a plain uninstall leaves them,
+# "Also remove my settings and data" (--purge-settings when silent) deletes them.
+settings_dirs = ["${APPDATA}/Tarman"]
+
+[[steps]]
+type  = "welcome"
+title = "Tarman ${app.version}"
+body  = "This wizard will install Tarman ${app.version} on your computer.\n\nTarman is a task manager and resource monitor for Windows. It records every metric for ten minutes so you can scroll back to see what happened, and which process caused it.\n\nClick Next to continue."
+
+[[steps]]
+type  = "license"
+title = "License Agreement"
+body  = "Tarman is released under the MIT License. Please review the terms below before continuing."
+file  = "LICENSE.txt"
+
+[[steps]]
+type  = "folder"
+title = "Select Folder"
+body  = "Choose where to install Tarman ${app.version}."
+
+[[steps]]
+type  = "shortcuts"
+title = "Select Optional Tasks"
+body  = "Check the items you would like the installer to perform."
+
+[[steps]]
+type  = "install"
+title = "Installing..."
+body  = "Copying files to your system."
+
+[[steps]]
+type  = "finish"
+title = "Installation Complete"
+body  = "Tarman has been installed successfully.\n\nSettings and activity logs live in %APPDATA%\\Tarman and stay there if you ever uninstall, unless you ask for them to go too.\n\nClick Finish to close the installer."
+
+[[steps.launches]]
+kind    = "app"
+target  = "${INSTALLDIR}/tarman.exe"
+label   = "Run Tarman after install"
+checked = true
+
+# Application payload: the exe (raylib is linked in) and the glfw runtime.
+[[files]]
+src = "build/tarman.exe"
+dst = "${INSTALLDIR}/tarman.exe"
+
+[[files]]
+src = "build/glfw3.dll"
+dst = "${INSTALLDIR}/glfw3.dll"
+
+[[files]]
+src = "build/LICENSE.txt"
+dst = "${INSTALLDIR}/LICENSE.txt"
+
+# Desktop and Start Menu shortcuts
+[[shortcuts]]
+target   = "${INSTALLDIR}/tarman.exe"
+location = "${DESKTOP}/Tarman.lnk"
+name     = "Tarman"
+icon     = "${INSTALLDIR}/tarman.exe"
+label    = "Create Desktop Shortcut"
+optional = true
+default  = true
+
+[[shortcuts]]
+target   = "${INSTALLDIR}/tarman.exe"
+location = "${STARTMENU}/Fezcode/Tarman.lnk"
+name     = "Tarman"
+icon     = "${INSTALLDIR}/tarman.exe"
+label    = "Create Start Menu Entry"
+optional = true
+default  = true
+
+# Registry entries
+[[registry]]
+hive  = "HKCU"
+key   = "Software\\Fezcode\\Tarman"
+value = "InstallDir"
+data  = "${INSTALLDIR}"
+
+[[registry]]
+hive  = "HKCU"
+key   = "Software\\Fezcode\\Tarman"
+value = "Version"
+data  = "${app.version}"
