@@ -90,13 +90,17 @@ add_custom_command(TARGET tarman POST_BUILD
 
 # Icon, manifest (per-monitor DPI, common controls v6, asInvoker) and a
 # VERSIONINFO block generated from TARMAN_VERSION.
-# resources/tarman.ico is produced by the app itself (`tarman --export-ico`),
-# so a first bootstrap build without it is allowed.
+# resources/tarman.ico is rendered by tools/make-logo.ps1 (committed); a build
+# without it still works, just without the icon and manifest resources.
 set(TARMAN_RES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources")
 if(EXISTS "${TARMAN_RES_DIR}/tarman.ico")
   enable_language(RC)
   configure_file(resources/tarman.rc.in "${CMAKE_CURRENT_BINARY_DIR}/tarman.rc" @ONLY)
   target_sources(tarman PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/tarman.rc")
+  # windres does not report the files it embeds, so without this an updated
+  # icon never reaches the exe (it kept the very first icon for a while).
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/tarman.rc" PROPERTIES
+    OBJECT_DEPENDS "${TARMAN_RES_DIR}/tarman.ico;${TARMAN_RES_DIR}/tarman.manifest")
 else()
   message(WARNING "resources/tarman.ico missing; building without icon/manifest resources")
 endif()

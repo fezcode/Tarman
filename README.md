@@ -151,7 +151,6 @@ tarman [options]
   --log CHANNEL           Events page source, e.g. System (default: Tarman activity)
   --screenshot FILE       Render, save a PNG of the window after --wait seconds, exit
   --wait SECONDS          Delay before --screenshot (default 4)
-  --export-ico FILE       Write the application icon as a multi-size .ico and exit
   --demo                  Show a synthetic machine (for screenshots); actions are disabled
 ```
 
@@ -173,6 +172,7 @@ Then from PowerShell:
 .\build.ps1 -Run     # build and launch
 .\installer.ps1      # build, verify and package dist\installer\Tarman-Setup-<version>.exe
 .\version.ps1        # report the version everywhere it lives
+.\tools\make-logo.ps1 # re-render the logo: .ico, README PNG, embedded app PNGs
 ```
 
 The installer is built with [Forge](https://github.com/fezcode/Forge), expected as a sibling

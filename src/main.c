@@ -65,97 +65,43 @@ void settings_save(void)
     fclose(f);
 }
 
-/* ---- the app icon, drawn rather than shipped --------------------------------------- */
+/* ---- the logo ---------------------------------------------------------------------- */
 
-/* Coverage of a rounded square (inset by `in`, corner radius r) at a pixel. */
-static float rr_cov(int size, float in, float r, int x, int y)
+/* tools/make-logo.ps1 renders the mark once and writes it everywhere: the .ico
+ * compiled into the exe (and used by the installer), and these PNGs, so the
+ * window icon, title bar and About box can never drift from it. */
+#include "logo_png.h"
+
+static Image logo_image(int px)
 {
-    float lo = in + r, hi = size - in - r;
-    float px = x + 0.5f, py = y + 0.5f;
-    float cx = fminf(fmaxf(px, lo), hi), cy = fminf(fmaxf(py, lo), hi);
-    float d = sqrtf((px - cx) * (px - cx) + (py - cy) * (py - cy));
-    if (px < in || py < in || px > size - in || py > size - in) return 0;
-    return fminf(1, fmaxf(0, r - d + 0.5f));
+    const unsigned char* data = px <= 32 ? LOGO_PNG_32 : px <= 64 ? LOGO_PNG_64 : LOGO_PNG_256;
+    int len = px <= 32 ? (int)sizeof LOGO_PNG_32 : px <= 64 ? (int)sizeof LOGO_PNG_64 : (int)sizeof LOGO_PNG_256;
+    return LoadImageFromMemory(".png", data, len);
 }
 
-static Image make_icon(int size)
+/* The smallest embedded frame that covers `logical` px at the current scale,
+ * so the title bar draws a natively rendered 32 px mark, not a blurred 256. */
+static Texture2D logo_texture(float logical)
 {
-    /* A flat slate tile carrying a four-bar meter; the tallest bar in amber.
-     * Bars sit on whole pixels at every size so the 16 px icon stays crisp. */
-    Image img = GenImageColor(size, size, BLANK);
-    Color edge = { 0x3A, 0x45, 0x56, 255 }, tile = { 0x1A, 0x20, 0x2A, 255 };
-    float r = size * 0.22f;
-    float bw_edge = size >= 32 ? fmaxf(1, size / 40.0f) : 0;
-    for (int y = 0; y < size; ++y)
-        for (int x = 0; x < size; ++x) {
-            float outer = rr_cov(size, 0, r, x, y);
-            if (outer <= 0) continue;
-            float inner = bw_edge > 0 ? rr_cov(size, bw_edge, fmaxf(0, r - bw_edge), x, y) : outer;
-            Color c = col_mix(edge, tile, inner);
-            c.a = (unsigned char)(255 * outer);
-            ImageDrawPixel(&img, x, y, c);
-        }
-    int pad = (int)roundf(size * 0.22f);
-    int inner = size - 2 * pad;
-    int gap = size >= 32 ? (int)roundf(inner * 0.09f) : 1;
-    int bw = (inner - 3 * gap) / 4;
-    if (bw < 1) bw = 1;
-    int total = 4 * bw + 3 * gap;
-    int x0 = (size - total) / 2, base = size - pad;
-    const float hs[4] = { 0.50f, 0.92f, 0.36f, 0.68f };
-    Color bar = { 0xD5, 0xDC, 0xE6, 255 }, hot = { 0xFF, 0xB3, 0x47, 255 };
-    for (int i = 0; i < 4; ++i) {
-        int h = (int)roundf(inner * hs[i]);
-        if (h < 1) h = 1;
-        ImageDrawRectangle(&img, x0 + i * (bw + gap), base - h, bw, h, i == 1 ? hot : bar);
-    }
-    return img;
-}
-
-static Texture2D logo_texture(void)
-{
-    static Texture2D logo;
-    if (!logo.id) {
-        Image im = make_icon(64);
-        logo = LoadTextureFromImage(im);
-        GenTextureMipmaps(&logo);
-        SetTextureFilter(logo, TEXTURE_FILTER_TRILINEAR);
+    static Texture2D tex[3];
+    static const int sizes[3] = { 32, 64, 256 };
+    float need = logical * ui.scale;
+    int k = need <= 32 ? 0 : need <= 64 ? 1 : 2;
+    if (!tex[k].id) {
+        Image im = logo_image(sizes[k]);
+        tex[k] = LoadTextureFromImage(im);
+        GenTextureMipmaps(&tex[k]);
+        SetTextureFilter(tex[k], TEXTURE_FILTER_TRILINEAR);
         UnloadImage(im);
     }
-    return logo;
+    return tex[k];
 }
 
-/* Writes a PNG-payload .ico (Vista+) with several sizes, for the exe resource. */
-static bool export_ico(const char* path)
+static void draw_logo(float x, float y, float size, Color tint)
 {
-    static const int sizes[] = { 16, 24, 32, 48, 64, 128, 256 };
-    const int n = 7;
-    unsigned char* data[7];
-    int len[7];
-    for (int i = 0; i < n; ++i) {
-        Image im = make_icon(sizes[i]);
-        data[i] = ExportImageToMemory(im, ".png", &len[i]);
-        UnloadImage(im);
-    }
-    FILE* f = fopen(path, "wb");
-    if (!f) return false;
-    unsigned short hdr[3] = { 0, 1, (unsigned short)n };
-    fwrite(hdr, 2, 3, f);
-    unsigned int off = 6 + 16 * n;
-    for (int i = 0; i < n; ++i) {
-        unsigned char e[16] = { 0 };
-        e[0] = (unsigned char)(sizes[i] >= 256 ? 0 : sizes[i]);
-        e[1] = e[0];
-        e[4] = 1;   /* planes */
-        e[6] = 32;  /* bpp */
-        memcpy(e + 8, &len[i], 4);
-        memcpy(e + 12, &off, 4);
-        fwrite(e, 1, 16, f);
-        off += (unsigned int)len[i];
-    }
-    for (int i = 0; i < n; ++i) { fwrite(data[i], 1, (size_t)len[i], f); MemFree(data[i]); }
-    fclose(f);
-    return true;
+    Texture2D t = logo_texture(size);
+    DrawTexturePro(t, (Rectangle){ 0, 0, (float)t.width, (float)t.height }, (Rectangle){ x, y, size, size },
+                   (Vector2){ 0 }, 0, tint);
 }
 
 /* ---- sidebar ---------------------------------------------------------------------- */
@@ -272,9 +218,7 @@ static void draw_titlebar(Rectangle r)
     DrawRectangleRec(r, T.side);
     DrawRectangleRec((Rectangle){ r.x, r.y + r.height - 1, r.width, 1 }, T.border);
 
-    Texture2D logo = logo_texture();
-    DrawTexturePro(logo, (Rectangle){ 0, 0, 64, 64 }, (Rectangle){ r.x + 14, r.y + (r.height - 18) / 2, 18, 18 },
-                   (Vector2){ 0 }, 0, active ? WHITE : col_alpha(WHITE, 0.6f));
+    draw_logo(r.x + 12, r.y + (r.height - 20) / 2, 20, active ? WHITE : col_alpha(WHITE, 0.65f));
 
     const float bw = 46;
     Rectangle bclose = { r.x + r.width - bw, r.y, bw, r.height - 1 };
@@ -494,7 +438,8 @@ static void draw_modal(void)
         break;
     }
     case MODAL_ABOUT: {
-        Rectangle in = modal_frame(480, 300, "About Tarman");
+        Rectangle in = modal_frame(480, 340, "About Tarman");
+        draw_logo(in.x + in.width - 64, in.y - 46, 64, WHITE);
         char b[160];
         snprintf(b, sizeof b, "Version %s  \xC2\xB7  raylib %s", TARMAN_VERSION, RAYLIB_VERSION);
         ui_text_fit(rect_cut_top(&in, 24), b, 13, FW_REG, T.text, AL_LEFT);
@@ -615,8 +560,7 @@ static void usage(void)
            "  --log CHANNEL           Events page source, e.g. System (default: Tarman activity)\n"
            "  --demo                  Show a synthetic machine (for screenshots); actions are disabled\n"
            "  --screenshot FILE       Render, save a PNG of the window after --wait seconds, exit\n"
-           "  --wait SECONDS          Delay before --screenshot (default 4)\n"
-           "  --export-ico FILE       Write the application icon as a multi-size .ico and exit\n",
+           "  --wait SECONDS          Delay before --screenshot (default 4)\n",
            TARMAN_VERSION);
 }
 
@@ -646,11 +590,6 @@ int main(int argc, char** argv)
         else if (!strcmp(a, "--page") && i + 1 < argc) {
             const char* p = argv[++i];
             for (int k = 0; k < PAGE_COUNT; ++k) if (!strcmp(p, page_names[k])) force_page = k;
-        } else if (!strcmp(a, "--export-ico") && i + 1 < argc) {
-            sys_attach_console();
-            bool ok = export_ico(argv[++i]);
-            printf(ok ? "icon written\n" : "could not write icon\n");
-            return ok ? 0 : 1;
         } else {
             sys_attach_console();
             fprintf(stderr, "tarman: unknown option '%s'\n\n", a);
@@ -706,9 +645,9 @@ int main(int argc, char** argv)
     SetWindowSize(ww, wh);
     SetWindowPosition((mw - ww) / 2, (mh - wh) / 2);
     SetWindowMinSize((int)(900 * dpi), (int)(600 * dpi));
-    Image icon = make_icon(64);
-    SetWindowIcon(icon);
-    UnloadImage(icon);
+    Image icons[3] = { logo_image(32), logo_image(64), logo_image(256) };
+    SetWindowIcons(icons, 3);
+    for (int i = 0; i < 3; ++i) UnloadImage(icons[i]);
     sys_window_setup(GetWindowHandle(), app.dark, app.topmost);
     sys_titlebar_install(GetWindowHandle());
     ClearWindowState(FLAG_WINDOW_HIDDEN);
