@@ -380,6 +380,12 @@ typedef struct {
  * so services and connections are only polled while visible. */
 enum { SYSWANT_SERVICES = 1, SYSWANT_CONNS = 2, SYSWANT_STARTUP = 4, SYSWANT_SESSIONS = 8 };
 
+/* Demo mode: a synthetic machine (fake process tree, user "demo", computer
+ * "DEMO-PC", made-up event logs) for screenshots that show no real data.
+ * Every process action refuses while it is on. Call before sys_start(). */
+void      sys_set_demo(bool on);
+bool      sys_is_demo(void);
+
 SysState* sys_start(void);
 void      sys_stop(void);
 void      sys_lock(void);

@@ -613,6 +613,7 @@ static void usage(void)
            "  --size WxH              Window size in logical pixels for this run\n"
            "  --window SECONDS        Visible time window: 60, 300 or 600\n"
            "  --log CHANNEL           Events page source, e.g. System (default: Tarman activity)\n"
+           "  --demo                  Show a synthetic machine (for screenshots); actions are disabled\n"
            "  --screenshot FILE       Render, save a PNG of the window after --wait seconds, exit\n"
            "  --wait SECONDS          Delay before --screenshot (default 4)\n"
            "  --export-ico FILE       Write the application icon as a multi-size .ico and exit\n",
@@ -634,6 +635,7 @@ int main(int argc, char** argv)
         if (!strcmp(a, "--screenshot") && i + 1 < argc) shot = argv[++i];
         else if (!strcmp(a, "--wait") && i + 1 < argc) wait = atof(argv[++i]);
         else if (!strcmp(a, "--light")) force_theme = 0;
+        else if (!strcmp(a, "--demo")) sys_set_demo(true);
         else if (!strcmp(a, "--size") && i + 1 < argc) sscanf(argv[++i], "%dx%d", &force_w, &force_h);
         else if (!strcmp(a, "--window") && i + 1 < argc) {
             int sec = atoi(argv[++i]);

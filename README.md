@@ -152,7 +152,11 @@ tarman [options]
   --screenshot FILE       Render, save a PNG of the window after --wait seconds, exit
   --wait SECONDS          Delay before --screenshot (default 4)
   --export-ico FILE       Write the application icon as a multi-size .ico and exit
+  --demo                  Show a synthetic machine (for screenshots); actions are disabled
 ```
+
+The screenshots in this README are taken with `--demo`, which replaces the process list, user,
+computer name and event logs with a made-up machine.
 
 ## Building from source
 

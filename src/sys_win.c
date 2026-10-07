@@ -43,6 +43,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
@@ -1720,6 +1721,196 @@ static void resolve_meta(MetaJob* j)
 
 /* ---- the tick ------------------------------------------------------------------- */
 
+/* ---- demo mode ----------------------------------------------------------------
+ *
+ * Replaces the process snapshot, window list and CPU load with a synthetic but
+ * plausible machine. System paths are real so Windows' own icons show; user
+ * apps live under a fictional C:\Users\demo profile. */
+
+static bool g_demo;
+void sys_set_demo(bool on) { g_demo = on; }
+bool sys_is_demo(void)     { return g_demo; }
+
+typedef struct {
+    const char* name;
+    const char* desc;
+    const char* path;
+    const char* user;
+    int         parent;       /* index in DEMO, -1 none */
+    float       cpu, wobble;  /* base %, swing %        */
+    float       mem_mb;
+    float       io_kbps;
+    float       gpu;
+    const char* title;        /* visible window => app  */
+    int         threads;
+} DemoDef;
+
+#define SYS32 "C:\\Windows\\System32\\"
+#define UAPP  "C:\\Users\\demo\\AppData\\Local\\"
+static const DemoDef DEMO[] = {
+    /*  0 */ { "System", "System", "", "SYSTEM", -1, 0.4f, 0.4f, 0.1f, 40, 0.8f, NULL, 210 },
+    /*  1 */ { "Registry", "Registry", "", "SYSTEM", 0, 0, 0, 38, 0, 0, NULL, 4 },
+    /*  2 */ { "smss.exe", "Windows Session Manager", SYS32 "smss.exe", "SYSTEM", 0, 0, 0, 0.4f, 0, 0, NULL, 2 },
+    /*  3 */ { "Memory Compression", "Memory Compression", "", "SYSTEM", 0, 0.1f, 0.2f, 412, 0, 0, NULL, 30 },
+    /*  4 */ { "csrss.exe", "Client Server Runtime Process", SYS32 "csrss.exe", "SYSTEM", -1, 0.1f, 0.2f, 1.6f, 0, 0, NULL, 13 },
+    /*  5 */ { "wininit.exe", "Windows Start-Up Application", SYS32 "wininit.exe", "SYSTEM", -1, 0, 0, 1.1f, 0, 0, NULL, 2 },
+    /*  6 */ { "services.exe", "Services and Controller app", SYS32 "services.exe", "SYSTEM", 5, 0.1f, 0.1f, 6.3f, 0, 0, NULL, 9 },
+    /*  7 */ { "lsass.exe", "Local Security Authority Process", SYS32 "lsass.exe", "SYSTEM", 5, 0.1f, 0.2f, 9.8f, 2, 0, NULL, 11 },
+    /*  8 */ { "svchost.exe", "Host Process for Windows Services", SYS32 "svchost.exe", "SYSTEM", 6, 0.2f, 0.3f, 24, 4, 0, NULL, 18 },
+    /*  9 */ { "svchost.exe", "Host Process for Windows Services", SYS32 "svchost.exe", "NETWORK SERVICE", 6, 0.1f, 0.2f, 11, 18, 0, NULL, 12 },
+    /* 10 */ { "svchost.exe", "Host Process for Windows Services", SYS32 "svchost.exe", "LOCAL SERVICE", 6, 0, 0.1f, 6.1f, 0, 0, NULL, 7 },
+    /* 11 */ { "svchost.exe", "Host Process for Windows Services", SYS32 "svchost.exe", "SYSTEM", 6, 0.3f, 0.6f, 31, 12, 0, NULL, 24 },
+    /* 12 */ { "svchost.exe", "Host Process for Windows Services", SYS32 "svchost.exe", "demo", 6, 0, 0.1f, 8.4f, 0, 0, NULL, 9 },
+    /* 13 */ { "svchost.exe", "Host Process for Windows Services", SYS32 "svchost.exe", "LOCAL SERVICE", 6, 0.1f, 0.1f, 14, 2, 0, NULL, 10 },
+    /* 14 */ { "spoolsv.exe", "Spooler SubSystem App", SYS32 "spoolsv.exe", "SYSTEM", 6, 0, 0, 5.2f, 0, 0, NULL, 8 },
+    /* 15 */ { "MsMpEng.exe", "Antimalware Service Executable", "C:\\Program Files\\Windows Defender\\MsMpEng.exe", "SYSTEM", 6, 0.6f, 2.5f, 186, 240, 0, NULL, 46 },
+    /* 16 */ { "dwm.exe", "Desktop Window Manager", SYS32 "dwm.exe", "DWM-1", 5, 1.2f, 1.4f, 96, 0, 4.5f, NULL, 22 },
+    /* 17 */ { "winlogon.exe", "Windows Logon Application", SYS32 "winlogon.exe", "SYSTEM", -1, 0, 0, 3.4f, 0, 0, NULL, 5 },
+    /* 18 */ { "explorer.exe", "Windows Explorer", "C:\\Windows\\explorer.exe", "demo", 17, 0.5f, 1.0f, 142, 22, 0.2f, "Documents - File Explorer", 96 },
+    /* 19 */ { "sihost.exe", "Shell Infrastructure Host", SYS32 "sihost.exe", "demo", 8, 0, 0.1f, 9.6f, 0, 0, NULL, 12 },
+    /* 20 */ { "taskhostw.exe", "Host Process for Windows Tasks", SYS32 "taskhostw.exe", "demo", 8, 0, 0.1f, 6.8f, 0, 0, NULL, 9 },
+    /* 21 */ { "ctfmon.exe", "CTF Loader", SYS32 "ctfmon.exe", "demo", 8, 0, 0.1f, 7.2f, 0, 0, NULL, 10 },
+    /* 22 */ { "RuntimeBroker.exe", "Runtime Broker", SYS32 "RuntimeBroker.exe", "demo", 8, 0, 0.1f, 8.9f, 0, 0, NULL, 6 },
+    /* 23 */ { "SearchHost.exe", "Search", "C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\SearchHost.exe", "demo", 8, 0, 0.1f, 64, 0, 0, NULL, 41 },
+    /* 24 */ { "StartMenuExperienceHost.exe", "Start", "C:\\Windows\\SystemApps\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\StartMenuExperienceHost.exe", "demo", 8, 0, 0, 48, 0, 0, NULL, 23 },
+    /* 25 */ { "audiodg.exe", "Windows Audio Device Graph Isolation", SYS32 "audiodg.exe", "LOCAL SERVICE", 10, 0.4f, 0.3f, 14, 0, 0, NULL, 7 },
+    /* 26 */ { "firefox.exe", "Firefox", "C:\\Program Files\\Mozilla Firefox\\firefox.exe", "demo", 18, 2.0f, 4.0f, 412, 140, 1.5f, "Tarman - GitHub - Mozilla Firefox", 98 },
+    /* 27 */ { "firefox.exe", "Firefox", "C:\\Program Files\\Mozilla Firefox\\firefox.exe", "demo", 26, 1.2f, 3.0f, 286, 20, 3.0f, NULL, 32 },
+    /* 28 */ { "firefox.exe", "Firefox", "C:\\Program Files\\Mozilla Firefox\\firefox.exe", "demo", 26, 0.4f, 1.0f, 164, 8, 0, NULL, 26 },
+    /* 29 */ { "firefox.exe", "Firefox", "C:\\Program Files\\Mozilla Firefox\\firefox.exe", "demo", 26, 0.1f, 0.4f, 92, 2, 0, NULL, 22 },
+    /* 30 */ { "Code.exe", "Visual Studio Code", UAPP "Programs\\Microsoft VS Code\\Code.exe", "demo", 18, 0.9f, 2.0f, 228, 60, 0.6f, "main.c - tarman - Visual Studio Code", 58 },
+    /* 31 */ { "Code.exe", "Visual Studio Code", UAPP "Programs\\Microsoft VS Code\\Code.exe", "demo", 30, 1.4f, 2.5f, 344, 30, 0, NULL, 24 },
+    /* 32 */ { "Code.exe", "Visual Studio Code", UAPP "Programs\\Microsoft VS Code\\Code.exe", "demo", 30, 0.2f, 0.4f, 118, 4, 0, NULL, 18 },
+    /* 33 */ { "clangd.exe", "clangd language server", UAPP "Programs\\LLVM\\bin\\clangd.exe", "demo", 31, 0.6f, 5.0f, 260, 90, 0, NULL, 14 },
+    /* 34 */ { "WindowsTerminal.exe", "Terminal", "C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal\\WindowsTerminal.exe", "demo", 18, 0.2f, 0.4f, 72, 0, 0.3f, "Windows PowerShell", 30 },
+    /* 35 */ { "pwsh.exe", "PowerShell 7", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "demo", 34, 0, 0.2f, 88, 0, 0, NULL, 19 },
+    /* 36 */ { "Spotify.exe", "Spotify", UAPP "Microsoft\\WindowsApps\\Spotify.exe", "demo", 18, 0.7f, 0.8f, 196, 24, 0.4f, "Spotify Premium", 44 },
+    /* 37 */ { "Slack.exe", "Slack", UAPP "slack\\slack.exe", "demo", 18, 0.5f, 1.2f, 310, 12, 0.2f, "general - Northwind - Slack", 40 },
+    /* 38 */ { "steam.exe", "Steam", "C:\\Program Files (x86)\\Steam\\steam.exe", "demo", 18, 0.3f, 0.5f, 140, 6, 0, NULL, 88 },
+    /* 39 */ { "OneDrive.exe", "Microsoft OneDrive", UAPP "Microsoft\\OneDrive\\OneDrive.exe", "demo", 18, 0.1f, 0.3f, 54, 30, 0, NULL, 28 },
+    /* 40 */ { "SecurityHealthSystray.exe", "Windows Security notification icon", SYS32 "SecurityHealthSystray.exe", "demo", 18, 0, 0, 4.1f, 0, 0, NULL, 3 },
+    /* 41 */ { "notepad.exe", "Notepad", SYS32 "notepad.exe", "demo", 18, 0, 0.2f, 28, 0, 0, "notes.txt - Notepad", 8 },
+    /* 42 */ { "nvcontainer.exe", "NVIDIA Container", "C:\\Program Files\\NVIDIA Corporation\\NvContainer\\nvcontainer.exe", "SYSTEM", 6, 0.1f, 0.2f, 34, 0, 0, NULL, 30 },
+    /* 43 */ { "fontdrvhost.exe", "Usermode Font Driver Host", SYS32 "fontdrvhost.exe", "UMFD-1", 5, 0, 0, 4.4f, 0, 0, NULL, 5 },
+    /* 44 */ { "tarman.exe", "Tarman - Task manager and resource monitor", NULL, "demo", 18, 0.7f, 0.4f, 72, 0, 0.6f, "Tarman", 13 },
+    /* 45 */ { "updater.exe", "Northwind Updater", UAPP "Northwind\\updater.exe", "demo", 6, 6.0f, 6.0f, 46, 2400, 0, NULL, 9 },
+};
+#define NDEMO ((int)(sizeof DEMO / sizeof DEMO[0]))
+
+typedef struct {
+    uint32_t pid;
+    uint64_t create;
+    uint64_t cpu, io_r, io_w;
+    bool     alive;
+} DemoState;
+static DemoState g_ds[NDEMO];
+static double    g_demo_t;
+static char      g_self_path[MAX_PATH * 3];
+
+static float demo_noise(int i, double t)
+{
+    /* cheap deterministic wobble: three sines at unrelated rates per process */
+    return (float)(0.5 + 0.25 * sin(t * (0.11 + i * 0.013) + i) + 0.15 * sin(t * (0.53 + i * 0.07) + i * 2.1) +
+                   0.10 * sin(t * (1.7 + i * 0.05) + i * 0.7));
+}
+
+static void demo_processes(double dt)
+{
+    S.nproc = 0;
+    g_demo_t += dt > 0 ? dt : 1;
+    double t = g_demo_t;
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    uint64_t now64 = ft64(now);
+    int ncores = S.ncores > 0 ? S.ncores : 8;
+    for (int i = 0; i < NDEMO; ++i) {
+        DemoState* d = &g_ds[i];
+        const DemoDef* def = &DEMO[i];
+        /* the updater runs 25 s of every 55 s, so starts and exits show up */
+        bool alive = i != NDEMO - 1 || fmod(t, 55.0) < 25.0;
+        if (alive && !d->alive) {
+            d->pid = i == 0 ? 4 : (uint32_t)(1000 + i * 412 + ((int)(t / 55.0) % 7) * 4096 * (i == NDEMO - 1));
+            d->create = i == NDEMO - 1 ? now64 : now64 - (uint64_t)(36000.0 + i * 37.0) * 10000000ULL;
+            d->cpu = d->io_r = d->io_w = 0;
+        }
+        d->alive = alive;
+        if (!alive) continue;
+        float n = demo_noise(i, t);
+        float cpu = def->cpu + def->wobble * n;
+        if (i == 33 && fmod(t, 40.0) < 6.0) cpu += 35.0f;           /* clangd re-index burst */
+        if (i == 15 && fmod(t + 20.0, 90.0) < 8.0) cpu += 22.0f;    /* Defender scan */
+        if (cpu < 0) cpu = 0;
+        d->cpu += (uint64_t)(cpu / 100.0 * ncores * dt * 1e7);
+        float io = def->io_kbps * 1024.0f * (0.4f + n);
+        d->io_r += (uint64_t)(io * 0.7f * dt);
+        d->io_w += (uint64_t)(io * 0.3f * dt);
+        float mem = def->mem_mb * (0.96f + 0.08f * n);
+        if (i == 37) mem += (float)(t * 0.35);                       /* Slack slowly leaks */
+        if (S.nproc == S.proc_cap) {
+            S.proc_cap = S.proc_cap ? S.proc_cap * 2 : 512;
+            S.procs = realloc(S.procs, sizeof *S.procs * S.proc_cap);
+        }
+        RawProc* r = &S.procs[S.nproc++];
+        memset(r, 0, sizeof *r);
+        r->pid = d->pid;
+        r->ppid = def->parent >= 0 ? g_ds[def->parent].pid : 0;
+        r->threads = (uint32_t)def->threads;
+        r->handles = (uint32_t)(def->threads * 31 + i * 7);
+        r->session = (!strcmp(def->user, "demo") || !strncmp(def->user, "DWM", 3) || !strncmp(def->user, "UMFD", 4)) ? 1 : 0;
+        r->base_prio = i == 16 ? 13 : 8;
+        r->create = d->create;
+        r->cpu = d->cpu;
+        r->ws_private = (uint64_t)(mem * 1048576.0f);
+        r->ws = r->ws_private + (uint64_t)(mem * 0.35f * 1048576.0f);
+        r->ws_peak = r->ws + r->ws / 8;
+        r->commit = r->ws_private + r->ws_private / 4;
+        r->virt = r->commit * 6;
+        r->paged = 180000 + (uint64_t)i * 4000;
+        r->nonpaged = 14000 + (uint64_t)i * 300;
+        r->io_r = d->io_r;
+        r->io_w = d->io_w;
+        r->page_faults = (uint32_t)(t * 40 + i * 1000);
+        snprintf(r->name, sizeof r->name, "%s", def->name);
+        if (def->gpu > 0) pidgpu_add(d->pid, def->gpu * (0.6f + 0.8f * n), (uint64_t)(def->mem_mb * 0.4f * 1048576.0f));
+    }
+}
+
+static void demo_apps(void)
+{
+    S.napp = 0;
+    for (int i = 0; i < NDEMO; ++i) {
+        if (!DEMO[i].title || !g_ds[i].alive) continue;
+        if (S.napp == S.app_cap) {
+            S.app_cap = S.app_cap ? S.app_cap * 2 : 64;
+            S.apps = realloc(S.apps, sizeof *S.apps * S.app_cap);
+        }
+        S.apps[S.napp].pid = g_ds[i].pid;
+        snprintf(S.apps[S.napp].title, sizeof S.apps[S.napp].title, "%s", DEMO[i].title);
+        S.napp++;
+    }
+}
+
+static void demo_meta(MetaJob* j)
+{
+    for (int i = 0; i < NDEMO; ++i) {
+        if (g_ds[i].pid != j->pid || !g_ds[i].alive) continue;
+        const DemoDef* def = &DEMO[i];
+        const char* path = def->path ? def->path : g_self_path;
+        snprintf(j->path, sizeof j->path, "%s", path);
+        snprintf(j->desc, sizeof j->desc, "%s", def->desc);
+        snprintf(j->user, sizeof j->user, "%s", def->user);
+        snprintf(j->company, sizeof j->company, "%s",
+                 strstr(path, "Windows") ? "Microsoft Corporation" : def->path ? "" : "Fezcode");
+        snprintf(j->cmdline, sizeof j->cmdline, path[0] ? "\"%s\"" : "", path);
+        j->icon = -1;
+        if (path[0]) {
+            const PathMeta* m = path_meta(path);   /* real file => its real icon */
+            if (m) j->icon = m->icon;
+        }
+        return;
+    }
+}
+
 #define MAPSZ 8192
 static Proc* g_map[MAPSZ];
 
@@ -1884,6 +2075,20 @@ static void apply_tick(SysState* st, double dt)
                  !strcmp(p->name, "Memory Compression")) p->group = PGROUP_WINDOWS;
         else p->group = PGROUP_BACKGROUND;
     }
+    if (g_demo) {
+        float sum = 0;
+        for (int i = 0; i < st->nproc; ++i) if (st->procs[i]->alive) sum += st->procs[i]->cpu;
+        float u = sum + 1.5f > 100 ? 100 : sum + 1.5f;
+        c->usage = u;
+        c->kernel = u * 0.22f;
+        for (int i = 0; i < ncores; ++i) {
+            float v = u * (0.55f + 0.9f * demo_noise(i + 50, g_demo_t));
+            c->core[i] = v > 100 ? 100 : v;
+            c->h_core[i].v[ring] = c->core[i];
+        }
+        c->h_usage.v[ring] = c->usage;
+        c->h_kernel.v[ring] = c->kernel;
+    }
     st->total_procs = nalive;
     st->total_threads = nthreads;
     st->total_handles = nhandles;
@@ -2040,7 +2245,7 @@ static DWORD WINAPI sampler_main(void* arg)
     LARGE_INTEGER freq, last, now;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&last);
-    gather_processes();
+    if (g_demo) demo_processes(0); else gather_processes();
     gather_cores();
     sys_lock();
     apply_tick(&g_st, 0);
@@ -2074,11 +2279,11 @@ static DWORD WINAPI sampler_main(void* arg)
         double dt = (double)(now.QuadPart - last.QuadPart) / (double)freq.QuadPart;
         last = now;
 
-        gather_processes();
         gather_cores();
         gather_pdh(&g_st);
+        if (g_demo) { S.npidgpu = 0; demo_processes(dt); demo_apps(); }
+        else { gather_processes(); gather_apps(); }
         gather_net();
-        gather_apps();
         gather_temps(&g_st, &S.temps, tick);
         S.ms.dwLength = sizeof S.ms;
         GlobalMemoryStatusEx(&S.ms);
@@ -2093,6 +2298,13 @@ static DWORD WINAPI sampler_main(void* arg)
         bool got_conns = false, got_svcs = false, got_startup = false;
         if (tick % 5 == 0) gather_volumes(vols, &nvol);
         if (tick % 3 == 0 || (want & SYSWANT_SESSIONS)) gather_sessions(sess, &nsess);
+        if (g_demo && nsess > 0) {
+            nsess = 1;
+            sess[0].id = 1;
+            snprintf(sess[0].user, sizeof sess[0].user, "demo");
+            snprintf(sess[0].station, sizeof sess[0].station, "Console");
+            snprintf(sess[0].state, sizeof sess[0].state, "Active");
+        }
         if ((want & SYSWANT_CONNS) && tick % 2 == 0) { conns = gather_conns(&nconn); got_conns = true; }
         static uint64_t svc_polls;
         if ((want & SYSWANT_SERVICES) && (tick % 2 == 0 || !g_st.nsvc)) {
@@ -2132,7 +2344,9 @@ static DWORD WINAPI sampler_main(void* arg)
          * extraction never stalls the clock */
         ULONGLONG budget = GetTickCount64() + 350;
         int done = 0;
-        for (; done < njobs && GetTickCount64() < budget; ++done) resolve_meta(&jobs[done]);
+        for (; done < njobs && GetTickCount64() < budget; ++done) {
+            if (g_demo) demo_meta(&jobs[done]); else resolve_meta(&jobs[done]);
+        }
         if (done) {
             sys_lock();
             map_build(&g_st);
@@ -2177,6 +2391,13 @@ SysState* sys_start(void)
     g_st.elevated = is_elevated();
     g_st.self_pid = GetCurrentProcessId();
     init_os_static(&g_st);
+    if (g_demo) {
+        snprintf(g_st.computer, sizeof g_st.computer, "DEMO-PC");
+        snprintf(g_st.user, sizeof g_st.user, "demo");
+        wchar_t self[MAX_PATH];
+        GetModuleFileNameW(NULL, self, MAX_PATH);
+        w2u(self, g_self_path, sizeof g_self_path);
+    }
 
     sys_log(LOG_LV_INFO, "Tarman", g_st.self_pid, true, "Started%s on %s", g_st.elevated ? " elevated" : "", g_st.os_name);
     g_thread = CreateThread(NULL, 0, sampler_main, NULL, 0, NULL);
@@ -2197,6 +2418,7 @@ void sys_stop(void)
 
 static HANDLE open_proc(uint32_t pid, DWORD access, char* err, int errn)
 {
+    if (g_demo) { set_msg(err, errn, "Demo mode: process actions are disabled."); return NULL; }
     HANDLE h = OpenProcess(access, FALSE, pid);
     if (!h) set_err(err, errn, GetLastError());
     return h;
@@ -2469,6 +2691,14 @@ bool sys_restart_elevated(void)
 void sys_proc_extra(uint32_t pid, ProcExtra* out)
 {
     memset(out, 0, sizeof *out);
+    if (g_demo) {
+        out->ok = true;
+        out->prio_class = NORMAL_PRIORITY_CLASS;
+        out->gdi = 40 + pid % 300;
+        out->user_objs = 20 + pid % 90;
+        out->affinity = out->sys_affinity = (1ULL << (g_st.cpu.logical < 64 ? g_st.cpu.logical : 63)) - 1;
+        return;
+    }
     HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (!h) return;
     out->ok = true;
@@ -2490,6 +2720,7 @@ void sys_proc_extra(uint32_t pid, ProcExtra* out)
 
 int sys_modules(uint32_t pid, ModuleInfo* out, int max)
 {
+    if (g_demo) return -1;
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
     if (snap == INVALID_HANDLE_VALUE) return -1;
     MODULEENTRY32W e = { sizeof e };

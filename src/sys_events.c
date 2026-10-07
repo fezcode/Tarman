@@ -268,9 +268,69 @@ static DWORD WINAPI query_thread(void* arg)
     return 0;
 }
 
+static void demo_events(const char* channel, unsigned mask, int hours)
+{
+    static const struct { uint8_t lv; uint32_t id; const char* prov; const char* task; const char* msg; } E[] = {
+        { 4, 7036, "Service Control Manager", "None", "The Windows Update service entered the running state." },
+        { 4, 7040, "Service Control Manager", "None", "The start type of the Background Intelligent Transfer Service service was changed from auto start to demand start." },
+        { 3, 10016, "Microsoft-Windows-DistributedCOM", "None", "The application-specific permission settings do not grant Local Activation permission for the COM Server application to the user DEMO-PC\\demo." },
+        { 4, 37, "Microsoft-Windows-Time-Service", "None", "The time provider NtpClient is currently receiving valid time data from time.windows.com." },
+        { 2, 1000, "Application Error", "Application Crashing Events", "Faulting application name: updater.exe, version: 2.4.1.0\nFaulting module name: ntdll.dll\nException code: 0xc0000005" },
+        { 4, 1001, "Windows Error Reporting", "None", "Fault bucket 2318881044, type 4\nEvent Name: APPCRASH\nResponse: Not available" },
+        { 4, 16384, "Microsoft-Windows-Security-SPP", "None", "Successfully scheduled Software Protection service for re-start." },
+        { 3, 1014, "Microsoft-Windows-DNS-Client", "None", "Name resolution for the name updates.northwind.example timed out after none of the configured DNS servers responded." },
+        { 4, 6013, "EventLog", "None", "The system uptime is 36214 seconds." },
+        { 4, 7045, "Service Control Manager", "None", "A service was installed in the system.\n\nService Name: Northwind Update Service\nService Start Type: demand start" },
+        { 1, 41, "Microsoft-Windows-Kernel-Power", "(63)", "The system has rebooted without cleanly shutting down first. This error could be caused if the system stopped responding, crashed, or lost power unexpectedly." },
+        { 4, 1, "Microsoft-Windows-Power-Troubleshooter", "None", "The system has returned from a low power state.\n\nSleep Time: 08:12:44\nWake Time: 08:31:02" },
+        { 3, 129, "storahci", "None", "Reset to device, \\Device\\RaidPort0, was issued." },
+        { 4, 98, "Microsoft-Windows-Ntfs", "None", "Volume C: (\\Device\\HarddiskVolume3) is healthy. No action is needed." },
+    };
+    const int N = (int)(sizeof E / sizeof E[0]);
+    int64_t now = 0;
+    FILETIME f;
+    GetSystemTimeAsFileTime(&f);
+    now = (int64_t)(((((uint64_t)f.dwHighDateTime) << 32 | f.dwLowDateTime) - 116444736000000000ULL) / 10000ULL);
+    int64_t cutoff = hours > 0 ? now - (int64_t)hours * 3600000LL : 0;
+    EventRec* recs = calloc(160, sizeof *recs);
+    int n = 0;
+    uint32_t seed = 2166136261u;
+    for (const char* p = channel; *p; ++p) seed = (seed ^ (uint8_t)*p) * 16777619u;
+    for (int k = 0; k < 160 && recs; ++k) {
+        seed = seed * 1664525u + 1013904223u;
+        int i = (int)((seed >> 8) % (uint32_t)N);
+        int64_t t = now - (int64_t)k * 9 * 60000LL - (int64_t)((seed >> 4) % 400000);
+        if (t < cutoff) break;
+        if (!((mask >> (E[i].lv > 5 ? 4 : E[i].lv)) & 1)) continue;
+        EventRec* r = &recs[n++];
+        r->record_id = 900000 - (uint64_t)k;
+        r->time_ms = t;
+        r->event_id = E[i].id;
+        r->level = E[i].lv;
+        r->pid = 4;
+        r->tid = 112;
+        snprintf(r->provider, sizeof r->provider, "%s", E[i].prov);
+        snprintf(r->task, sizeof r->task, "%s", E[i].task);
+        snprintf(r->computer, sizeof r->computer, "DEMO-PC");
+        r->message = _strdup(E[i].msg);
+    }
+    EnterCriticalSection(&g_ecs);
+    InterlockedIncrement(&g_gen);
+    for (int i = 0; i < g_ev.n; ++i) free(g_ev.recs[i].message);
+    free(g_ev.recs);
+    g_ev.recs = recs;
+    g_ev.n = n;
+    g_ev.busy = false;
+    g_ev.truncated = false;
+    g_ev.error[0] = 0;
+    snprintf(g_ev.channel, sizeof g_ev.channel, "%s", channel);
+    LeaveCriticalSection(&g_ecs);
+}
+
 void sys_events_query(const char* channel, unsigned level_mask, int hours, int max_rows)
 {
     ensure_init();
+    if (sys_is_demo()) { demo_events(channel, level_mask, hours); return; }
     QueryJob* j = calloc(1, sizeof *j);
     if (!j) return;
     MultiByteToWideChar(CP_UTF8, 0, channel, -1, j->channel, 160);
@@ -296,6 +356,11 @@ void sys_events_query(const char* channel, unsigned level_mask, int hours, int m
 
 uint64_t sys_event_log_count(const char* channel)
 {
+    if (sys_is_demo()) {
+        uint32_t h = 7;
+        for (const char* p = channel; *p; ++p) h = h * 31 + (uint8_t)*p;
+        return 400 + h % 30000;
+    }
     wchar_t w[160];
     MultiByteToWideChar(CP_UTF8, 0, channel, -1, w, 160);
     EVT_HANDLE log = EvtOpenLog(NULL, w, EvtOpenChannelPath);
@@ -361,6 +426,32 @@ static DWORD WINAPI channels_thread(void* arg)
 void sys_events_list_channels(void)
 {
     ensure_init();
+    if (sys_is_demo()) {
+        /* a stock Windows install's logs, not this machine's */
+        static const char* const names[] = {
+            "Microsoft-Windows-AppReadiness/Admin", "Microsoft-Windows-Bits-Client/Operational",
+            "Microsoft-Windows-Diagnostics-Performance/Operational", "Microsoft-Windows-GroupPolicy/Operational",
+            "Microsoft-Windows-Kernel-PnP/Configuration", "Microsoft-Windows-NetworkProfile/Operational",
+            "Microsoft-Windows-PowerShell/Operational", "Microsoft-Windows-PrintService/Admin",
+            "Microsoft-Windows-StateRepository/Operational", "Microsoft-Windows-Store/Operational",
+            "Microsoft-Windows-TaskScheduler/Maintenance", "Microsoft-Windows-Time-Service/Operational",
+            "Microsoft-Windows-WindowsUpdateClient/Operational", "Microsoft-Windows-Winlogon/Operational",
+            "Windows PowerShell",
+        };
+        const int n = (int)(sizeof names / sizeof names[0]);
+        EventChannel* list = calloc((size_t)n, sizeof *list);
+        for (int i = 0; list && i < n; ++i) {
+            snprintf(list[i].name, sizeof list[i].name, "%s", names[i]);
+            list[i].records = sys_event_log_count(names[i]);
+        }
+        EnterCriticalSection(&g_ecs);
+        free(g_ev.channels);
+        g_ev.channels = list;
+        g_ev.nchannels = list ? n : 0;
+        g_ev.channels_busy = false;
+        LeaveCriticalSection(&g_ecs);
+        return;
+    }
     EnterCriticalSection(&g_ecs);
     bool busy = g_ev.channels_busy;
     g_ev.channels_busy = true;
