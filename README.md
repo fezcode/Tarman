@@ -96,7 +96,7 @@ Search online, Properties, and Copy name / PID / path / command line.
 
 ## Install
 
-Download `Tarman-Setup-0.1.0.exe` from the
+Download `Tarman-Setup-0.1.1.exe` from the
 [latest release](https://github.com/fezcode/Tarman/releases/latest) and run it. It installs per user
 into `%LOCALAPPDATA%\Programs\Tarman` and needs no administrator rights. The wizard offers
 Desktop and Start Menu shortcuts, and Tarman appears in *Apps & features* for a clean uninstall.
