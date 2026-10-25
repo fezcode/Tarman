@@ -197,3 +197,8 @@ happening at 14:32:05" a single array read.
 ## License
 
 [MIT](LICENSE.txt) &copy; 2026 Fezcode
+
+## Application icon
+
+The approved transparent artwork is `resources/icon-master.png`. Run `python tools/make-icon.py` with Python and Pillow to regenerate the PNG sizes, Windows ICO and raster-backed SVG wrapper. Generated assets are committed; normal builds do not require Python.
+`src/logo_png.h` embeds matching PNGs for the window icon, title bar and About box.
