@@ -416,7 +416,8 @@ bool sys_restart_elevated(void);       /* true: the elevated copy launched */
 void sys_proc_extra(uint32_t pid, ProcExtra* out);
 int  sys_modules(uint32_t pid, ModuleInfo* out, int max);
 
-void    sys_window_setup(void* hwnd, bool dark, bool topmost);
+/* theme: 0 light, 1 dark, 2 stone (ui.h ThemeId values; sys.h stays raylib-free) */
+void    sys_window_setup(void* hwnd, int theme, bool topmost);
 int64_t sys_now_ms(void);
 void    sys_format_clock(int64_t unix_ms, char* out, int n);      /* "14:32:05" */
 void    sys_format_filetime(uint64_t ft, char* out, int n);       /* local date+time */

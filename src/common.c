@@ -399,8 +399,9 @@ int table_scroll(Rectangle body, float* scroll, int rows, float row_h, uint32_t 
 Rectangle page_header(Rectangle* r, const char* title, const char* subtitle)
 {
     Rectangle h = rect_cut_top(r, 58);
-    float tw = ui_text_w(title, 20, FW_SEMI);
-    ui_text_fit((Rectangle){ h.x, h.y + 10, tw + 4, 30 }, title, 20, FW_SEMI, T.text, AL_LEFT);
+    int fw = ui_display_weight();
+    float tw = ui_text_w(title, 20, fw);
+    ui_text_fit((Rectangle){ h.x, h.y + 10, tw + 4, 30 }, title, 20, fw, T.text, AL_LEFT);
     float used = tw + 16;
     if (subtitle && subtitle[0]) {
         float sw = fminf(ui_text_w(subtitle, 12.5f, FW_REG) + 4, fmaxf(0, h.width * 0.35f));
@@ -420,7 +421,8 @@ void stat_item(float x, float y, float w, const char* label, const char* value, 
 {
     ui_text_fit((Rectangle){ x, y, w, 16 }, label, 11.5f, FW_REG, T.dim, AL_LEFT);
     if (accent.a) DrawRectangleRec((Rectangle){ x - 8, y + 3, 2.5f, 34 }, accent);
-    ui_text_fit((Rectangle){ x, y + 16, w, 24 }, value, 16.5f, FW_SEMI, T.text, AL_LEFT);
+    /* a regular-weight serif reads lighter than Segoe semibold, so it runs a touch larger */
+    ui_text_fit((Rectangle){ x, y + 16, w, 24 }, value, T.serif ? 18.5f : 16.5f, ui_display_weight(), T.text, AL_LEFT);
 }
 
 void empty_state(Rectangle r, int icon, const char* text)

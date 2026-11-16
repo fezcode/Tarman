@@ -2739,15 +2739,16 @@ int sys_modules(uint32_t pid, ModuleInfo* out, int max)
     return n;
 }
 
-void sys_window_setup(void* hwnd, bool dark, bool topmost)
+void sys_window_setup(void* hwnd, int theme, bool topmost)
 {
     HWND h = (HWND)hwnd;
     if (!h) return;
+    bool dark = theme == 1, stone = theme == 2;
     BOOL d = dark;
     DwmSetWindowAttribute(h, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &d, sizeof d);
-    COLORREF cap = dark ? RGB(0x0d, 0x10, 0x15) : RGB(0xf4, 0xf6, 0xf9);
+    COLORREF cap = dark ? RGB(0x0d, 0x10, 0x15) : stone ? RGB(0xe8, 0xe6, 0xe2) : RGB(0xf4, 0xf6, 0xf9);
     DwmSetWindowAttribute(h, 35 /* DWMWA_CAPTION_COLOR */, &cap, sizeof cap);
-    COLORREF txt = dark ? RGB(0xe6, 0xe9, 0xef) : RGB(0x1a, 0x1f, 0x29);
+    COLORREF txt = dark ? RGB(0xe6, 0xe9, 0xef) : stone ? RGB(0x1b, 0x1a, 0x18) : RGB(0x1a, 0x1f, 0x29);
     DwmSetWindowAttribute(h, 36 /* DWMWA_TEXT_COLOR */, &txt, sizeof txt);
     SetWindowPos(h, topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);

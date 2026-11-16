@@ -482,10 +482,12 @@ void page_settings(Rectangle r)
     Rectangle ctl;
 
     ui_text_fit(rect_cut_top(&in, 34), "Appearance", 12, FW_SEMI, T.accent, AL_LEFT);
-    setting_row(&in, "Theme", "Dark is easier on the eyes for long monitoring sessions.", &ctl, 220);
-    static const char* themes[] = { "Dark", "Light" };
-    int th = app.dark ? 0 : 1;
-    if (ui_segmented(ctl, themes, 2, &th)) { app.dark = th == 0; ui_theme(app.dark); settings_save(); }
+    setting_row(&in, "Theme", "Dark is easier on the eyes; Stone is a warm, light editorial look.", &ctl, 270);
+    static const char* themes[] = { "Dark", "Light", "Stone" };
+    static const int theme_ids[] = { THEME_DARK, THEME_LIGHT, THEME_STONE };
+    int th = 0;
+    for (int i = 0; i < 3; ++i) if (app.theme == theme_ids[i]) th = i;
+    if (ui_segmented(ctl, themes, 3, &th)) { app.theme = theme_ids[th]; ui_theme(app.theme); settings_save(); }
 
     setting_row(&in, "Interface scale", "On top of your display scaling. Ctrl+Plus / Ctrl+Minus also work.", &ctl, 300);
     static const char* zooms[] = { "90%", "100%", "115%", "130%", "150%" };

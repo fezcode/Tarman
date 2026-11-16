@@ -7,7 +7,7 @@
 
 [app]
 name    = "Tarman"
-version = "0.1.2"
+version = "0.1.3"
 id      = "com.fezcode.tarman"
 icon    = "resources/tarman.ico"
 

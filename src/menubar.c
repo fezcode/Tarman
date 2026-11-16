@@ -94,8 +94,9 @@ static void build(Buf* b)
     put(b, " view.pause|Pause recording|Space|%s\n", fl(true, app.paused));
     put(b, " -\n");
     put(b, " view.theme|Theme|>\n");
-    put(b, "  view.theme.dark|Dark||%s\n", fl(true, app.dark));
-    put(b, "  view.theme.light|Light||%s\n", fl(true, !app.dark));
+    put(b, "  view.theme.dark|Dark||%s\n", fl(true, app.theme == THEME_DARK));
+    put(b, "  view.theme.light|Light||%s\n", fl(true, app.theme == THEME_LIGHT));
+    put(b, "  view.theme.stone|Stone||%s\n", fl(true, app.theme == THEME_STONE));
     put(b, " view.zoomin|Zoom in|Ctrl+Plus\n");
     put(b, " view.zoomout|Zoom out|Ctrl+Minus\n");
     put(b, " view.zoomreset|Actual size|Ctrl+0\n");
@@ -183,8 +184,9 @@ static void dispatch(const char* id)
     else if (!strcmp(id, "view.window.5")) app.window_idx = 1;
     else if (!strcmp(id, "view.window.10")) app.window_idx = 2;
     else if (!strcmp(id, "view.pause")) { app.paused = !app.paused; sys_set_paused(app.paused); }
-    else if (!strcmp(id, "view.theme.dark")) { app.dark = true; ui_theme(true); }
-    else if (!strcmp(id, "view.theme.light")) { app.dark = false; ui_theme(false); }
+    else if (!strcmp(id, "view.theme.dark")) { app.theme = THEME_DARK; ui_theme(app.theme); }
+    else if (!strcmp(id, "view.theme.light")) { app.theme = THEME_LIGHT; ui_theme(app.theme); }
+    else if (!strcmp(id, "view.theme.stone")) { app.theme = THEME_STONE; ui_theme(app.theme); }
     else if (!strcmp(id, "view.zoomin")) app.zoom = app.zoom + 0.1f > 2.0f ? 2.0f : app.zoom + 0.1f;
     else if (!strcmp(id, "view.zoomout")) app.zoom = app.zoom - 0.1f < 0.8f ? 0.8f : app.zoom - 0.1f;
     else if (!strcmp(id, "view.zoomreset")) app.zoom = 1.0f;

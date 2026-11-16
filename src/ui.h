@@ -19,16 +19,27 @@
 
 /* ---- theme --------------------------------------------------------------- */
 
+/* Theme ids double as the persisted `theme=` value in settings.ini, so only
+ * ever append: 0 and 1 match the old `dark=` bool's light/dark meaning. */
+typedef enum { THEME_LIGHT = 0, THEME_DARK = 1, THEME_STONE = 2, THEME_COUNT } ThemeId;
+
 typedef struct {
     Color bg, side, panel, card, hover, press, border, line;
     Color text, dim, faint, accent, on_accent;
     Color cpu, mem, disk, net, gpu, kernel;
     Color good, warn, bad, sel;
+    Color primary, on_primary;          /* BTN_PRIMARY fill and label            */
+    Color heat_lo, heat_hi;             /* ui_heat() ramp                        */
+    Color metal_lo, metal_hi;           /* brushed-metal panel base and sheen    */
+    Color metal_text, metal_dim;        /* text drawn on a metal panel           */
     bool  dark;
+    bool  serif;                        /* headline numbers/titles in FW_SERIF   */
+    bool  metal;                        /* hero panels use ui_metal()            */
+    int   id;                           /* ThemeId                               */
 } Theme;
 
 extern Theme T;
-void ui_theme(bool dark);
+void ui_theme(int id);                  /* ThemeId; out-of-range ids fall back to dark */
 
 Color col_alpha(Color c, float a);
 Color col_mix(Color a, Color b, float t);
@@ -54,7 +65,11 @@ enum {
 
 /* ---- fonts & text ---------------------------------------------------------- */
 
-typedef enum { FW_REG = 0, FW_SEMI, FW_BOLD, FW_MONO, FW_ICON, FW_COUNT } FontWeight;
+typedef enum { FW_REG = 0, FW_SEMI, FW_BOLD, FW_MONO, FW_ICON, FW_SERIF, FW_COUNT } FontWeight;
+
+/* Weight for big headline numbers and titles: the theme's serif when it has
+ * one, otherwise the semibold UI face the other themes always used. */
+static inline int ui_display_weight(void) { return T.serif ? FW_SERIF : FW_SEMI; }
 typedef enum { AL_LEFT = 0, AL_CENTER, AL_RIGHT } Align;
 
 void  ui_fonts_init(void);
@@ -70,6 +85,8 @@ void  ui_icon(float cx, float cy, int codepoint, float size, Color c);
 void ui_rrect(Rectangle r, float radius, Color c);
 void ui_rrect_line(Rectangle r, float radius, float thick, Color c);
 void ui_vgradient(Rectangle r, Color top, Color bottom);
+/* Charcoal panel with a lighter diagonal sheen (T.metal_lo / T.metal_hi). */
+void ui_metal(Rectangle r, float radius);
 void ui_scissor_push(Rectangle r);
 void ui_scissor_pop(void);
 Rectangle rect_inset(Rectangle r, float dx, float dy);

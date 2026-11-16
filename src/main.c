@@ -28,11 +28,15 @@ static void settings_load(void)
     FILE* f = fopen(path, "r");
     if (!f) return;
     char line[256];
+    /* `theme=` (a ThemeId) supersedes the older `dark=` bool; files written
+     * before Stone existed only carry `dark=`, which still picks light/dark */
+    int theme = -1, dark = -1;
     while (fgets(line, sizeof line, f)) {
         char key[64];
         float v;
         if (sscanf(line, "%63[^=]=%f", key, &v) != 2) continue;
-        if (!strcmp(key, "dark")) app.dark = v != 0;
+        if (!strcmp(key, "dark")) dark = v != 0;
+        else if (!strcmp(key, "theme")) theme = (int)v;
         else if (!strcmp(key, "zoom")) app.zoom = v;
         else if (!strcmp(key, "topmost")) app.topmost = v != 0;
         else if (!strcmp(key, "window")) app.window_idx = (int)v;
@@ -44,6 +48,8 @@ static void settings_load(void)
         else if (!strcmp(key, "win_h")) g_win_h = (int)v;
     }
     fclose(f);
+    if (theme >= 0 && theme < THEME_COUNT) app.theme = theme;
+    else if (dark >= 0) app.theme = dark ? THEME_DARK : THEME_LIGHT;
     if (app.window_idx < 0 || app.window_idx > 2) app.window_idx = 2;
     if (app.page < 0 || app.page >= PAGE_COUNT) app.page = 0;
     if (app.proc_view < 0 || app.proc_view > 2) app.proc_view = 0;
@@ -60,8 +66,10 @@ void settings_save(void)
     if (!f) return;
     int w = IsWindowReady() ? (int)(GetScreenWidth() / ui.scale) : g_win_w;
     int h = IsWindowReady() ? (int)(GetScreenHeight() / ui.scale) : g_win_h;
-    fprintf(f, "dark=%d\nzoom=%.2f\ntopmost=%d\nwindow=%d\npage=%d\nnav_collapsed=%d\nproc_view=%d\nwin_w=%d\nwin_h=%d\nhoswl=%d\n",
-            app.dark, app.zoom, app.topmost, app.window_idx, app.page, app.nav_collapsed, app.proc_view, w, h, app.hoswl);
+    /* `dark=` is kept for older builds, which ignore `theme=` (Stone reads as light there) */
+    fprintf(f, "dark=%d\ntheme=%d\nzoom=%.2f\ntopmost=%d\nwindow=%d\npage=%d\nnav_collapsed=%d\nproc_view=%d\nwin_w=%d\nwin_h=%d\nhoswl=%d\n",
+            app.theme == THEME_DARK, app.theme, app.zoom, app.topmost, app.window_idx, app.page, app.nav_collapsed,
+            app.proc_view, w, h, app.hoswl);
     fclose(f);
 }
 
@@ -144,9 +152,11 @@ static void nav_item(Rectangle r, int page, const char* label, int icon, bool co
 
 static void mini_meter(Rectangle r, const char* label, float t, const char* value, Color c)
 {
-    ui_text_fit((Rectangle){ r.x, r.y, 60, 16 }, label, 11.5f, FW_REG, T.dim, AL_LEFT);
-    ui_text_fit((Rectangle){ r.x + 60, r.y, r.width - 60, 16 }, value, 11.5f, FW_SEMI, T.text, AL_RIGHT);
-    ui_bar((Rectangle){ r.x, r.y + 19, r.width, 4 }, t, c);
+    /* on a metal panel the meters take the panel's light ink */
+    ui_text_fit((Rectangle){ r.x, r.y, 60, 16 }, label, 11.5f, FW_REG, T.metal ? T.metal_dim : T.dim, AL_LEFT);
+    ui_text_fit((Rectangle){ r.x + 60, r.y, r.width - 60, 16 }, value, 11.5f, FW_SEMI,
+                T.metal ? T.metal_text : T.text, AL_RIGHT);
+    ui_bar((Rectangle){ r.x, r.y + 19, r.width, 4 }, t, T.metal ? col_mix(c, T.metal_hi, 0.35f) : c);
 }
 
 static void draw_sidebar(Rectangle r)
@@ -181,7 +191,14 @@ static void draw_sidebar(Rectangle r)
     if (!col && in.height > 150) {
         SysState* st = app.st;
         Rectangle m = rect_cut_bottom(&in, 140);
-        m = rect_inset(m, 12, 4);
+        if (T.metal) {
+            /* lifted 8 px off the Settings item below; 140 - 2 * 6 = 4 meters of 32 */
+            Rectangle panel = { m.x + 4, m.y - 8, m.width - 8, m.height };
+            ui_metal(panel, 10);
+            m = rect_inset(panel, 12, 6);
+        } else {
+            m = rect_inset(m, 12, 4);
+        }
         char v[48], a[32], b[32];
         snprintf(v, sizeof v, "%.0f%%", st->cpu.usage);
         mini_meter(rect_cut_top(&m, 32), "CPU", st->cpu.usage / 100, v, T.cpu);
@@ -554,7 +571,8 @@ static void usage(void)
            "  -v, --version           Print the version and exit\n"
            "  --page NAME             Open on a page: processes, performance, analysis, network,\n"
            "                          disk, memory, startup, users, services, events, firmware, settings\n"
-           "  --light | --dark        Force the theme for this run\n"
+           "  --light | --dark | --stone\n"
+           "                          Force the theme for this run\n"
            "  --size WxH              Window size in logical pixels for this run\n"
            "  --window SECONDS        Visible time window: 60, 300 or 600\n"
            "  --log CHANNEL           Events page source, e.g. System (default: Tarman activity)\n"
@@ -578,7 +596,8 @@ int main(int argc, char** argv)
         if (!strcmp(a, "-v") || !strcmp(a, "--version")) { sys_attach_console(); printf("tarman v%s\n", TARMAN_VERSION); return 0; }
         if (!strcmp(a, "--screenshot") && i + 1 < argc) shot = argv[++i];
         else if (!strcmp(a, "--wait") && i + 1 < argc) wait = atof(argv[++i]);
-        else if (!strcmp(a, "--light")) force_theme = 0;
+        else if (!strcmp(a, "--light")) force_theme = THEME_LIGHT;
+        else if (!strcmp(a, "--stone")) force_theme = THEME_STONE;
         else if (!strcmp(a, "--demo")) sys_set_demo(true);
         else if (!strcmp(a, "--size") && i + 1 < argc) sscanf(argv[++i], "%dx%d", &force_w, &force_h);
         else if (!strcmp(a, "--window") && i + 1 < argc) {
@@ -586,7 +605,7 @@ int main(int argc, char** argv)
             force_window = sec <= 60 ? 0 : sec <= 300 ? 1 : 2;
         }
         else if (!strcmp(a, "--log") && i + 1 < argc) force_log = argv[++i];
-        else if (!strcmp(a, "--dark")) force_theme = 1;
+        else if (!strcmp(a, "--dark")) force_theme = THEME_DARK;
         else if (!strcmp(a, "--page") && i + 1 < argc) {
             const char* p = argv[++i];
             for (int k = 0; k < PAGE_COUNT; ++k) if (!strcmp(p, page_names[k])) force_page = k;
@@ -598,7 +617,7 @@ int main(int argc, char** argv)
         }
     }
 
-    app.dark = true;
+    app.theme = THEME_DARK;
     app.zoom = 1.0f;
     app.window_idx = 2;
     app.proc_sort = 0;
@@ -617,12 +636,12 @@ int main(int argc, char** argv)
     TL.pin = -1;
     TL.hover = TL.hover_next = -1;
     settings_load();
-    if (force_theme >= 0) app.dark = force_theme == 1;
+    if (force_theme >= 0) app.theme = force_theme;
     if (force_page >= 0) app.page = force_page;
     if (force_window >= 0) app.window_idx = force_window;
     if (force_w >= 900 && force_h >= 600) { g_win_w = force_w; g_win_h = force_h; }
     if (force_log) snprintf(app.ev_source, sizeof app.ev_source, "%s", force_log);
-    ui_theme(app.dark);
+    ui_theme(app.theme);
 
     app.st = sys_start();
     if (!shot) menubar_init(app.hoswl);   /* screenshots must not take menubar clicks */
@@ -648,12 +667,13 @@ int main(int argc, char** argv)
     Image icons[3] = { logo_image(32), logo_image(64), logo_image(256) };
     SetWindowIcons(icons, 3);
     for (int i = 0; i < 3; ++i) UnloadImage(icons[i]);
-    sys_window_setup(GetWindowHandle(), app.dark, app.topmost);
+    sys_window_setup(GetWindowHandle(), app.theme, app.topmost);
     sys_titlebar_install(GetWindowHandle());
     ClearWindowState(FLAG_WINDOW_HIDDEN);
     ui_fonts_init();
 
-    bool last_dark = app.dark, last_top = app.topmost;
+    int last_theme = app.theme;
+    bool last_top = app.topmost;
     double last_input = GetTime(), start = GetTime();
     while (!WindowShouldClose() && !app.quit) {
         /* a monitor should not be the thing burning CPU: full rate only
@@ -670,9 +690,9 @@ int main(int argc, char** argv)
         float scale = GetWindowScaleDPI().x;
         if (scale < 1) scale = 1;
         ui_set_scale(scale * app.zoom);
-        if (app.dark != last_dark || app.topmost != last_top) {
-            sys_window_setup(GetWindowHandle(), app.dark, app.topmost);
-            last_dark = app.dark;
+        if (app.theme != last_theme || app.topmost != last_top) {
+            sys_window_setup(GetWindowHandle(), app.theme, app.topmost);
+            last_theme = app.theme;
             last_top = app.topmost;
         }
 

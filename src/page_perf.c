@@ -143,8 +143,9 @@ static void draw_device_list(Rectangle r, Dev* devs, int n)
 static Rectangle detail_header(Rectangle* r, const char* title, const char* right)
 {
     Rectangle h = rect_cut_top(r, 48);
-    float tw = ui_text_w(title, 24, FW_SEMI);
-    ui_text_fit((Rectangle){ h.x, h.y, tw + 4, 40 }, title, 24, FW_SEMI, T.text, AL_LEFT);
+    int fw = ui_display_weight();
+    float tw = ui_text_w(title, 24, fw);
+    ui_text_fit((Rectangle){ h.x, h.y, tw + 4, 40 }, title, 24, fw, T.text, AL_LEFT);
     Rectangle rest = { h.x + tw + 20, h.y + 6, h.width - tw - 20, 32 };
     ui_text_fit((Rectangle){ rest.x, rest.y, rest.width, 32 }, right, 14, FW_REG, T.dim, AL_RIGHT);
     return rest;

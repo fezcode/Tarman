@@ -15,20 +15,9 @@ Timeline TL;
 
 static Color hex(uint32_t v) { return (Color){ (v >> 16) & 255, (v >> 8) & 255, v & 255, 255 }; }
 
-void ui_theme(bool dark)
+void ui_theme(int id)
 {
-    if (dark) {
-        T = (Theme){
-            .bg = hex(0x0B0E13), .side = hex(0x0E1218), .panel = hex(0x12171F), .card = hex(0x161C26),
-            .hover = hex(0x1D2430), .press = hex(0x242C3A), .border = hex(0x232B38), .line = hex(0x1A212C),
-            .text = hex(0xE8EBF1), .dim = hex(0x9AA3B2), .faint = hex(0x5F6878),
-            .accent = hex(0x4CC2FF), .on_accent = hex(0x04121C),
-            .cpu = hex(0x4CC2FF), .mem = hex(0xB48CFF), .disk = hex(0x4ADE80), .net = hex(0xFFB347),
-            .gpu = hex(0xFF6B9A), .kernel = hex(0x1F7FB8),
-            .good = hex(0x3DDC97), .warn = hex(0xFFC857), .bad = hex(0xFF5D5D), .sel = hex(0x1B3348),
-            .dark = true,
-        };
-    } else {
+    if (id == THEME_LIGHT) {
         T = (Theme){
             .bg = hex(0xF3F5F8), .side = hex(0xECEFF4), .panel = hex(0xFFFFFF), .card = hex(0xFFFFFF),
             .hover = hex(0xEDF1F6), .press = hex(0xE2E8F0), .border = hex(0xDCE2EA), .line = hex(0xEDF0F4),
@@ -37,7 +26,40 @@ void ui_theme(bool dark)
             .cpu = hex(0x0A84D6), .mem = hex(0x8B5CF6), .disk = hex(0x16A34A), .net = hex(0xE08600),
             .gpu = hex(0xE0457B), .kernel = hex(0x63B3EA),
             .good = hex(0x14A06B), .warn = hex(0xC98A00), .bad = hex(0xE03B3B), .sel = hex(0xDCEBFA),
-            .dark = false,
+            .primary = hex(0x0A7BD0), .on_primary = hex(0xFFFFFF),
+            .heat_lo = hex(0xFFF4CE), .heat_hi = hex(0xFFB07A),
+            .dark = false, .id = THEME_LIGHT,
+        };
+    } else if (id == THEME_STONE) {
+        /* Warm light-grey canvas, white surfaces with warm-grey hairlines,
+         * near-black ink, a champagne accent and charcoal primary buttons.
+         * Series colours are desaturated earth tones that stay apart. */
+        T = (Theme){
+            .bg = hex(0xEFEEEC), .side = hex(0xE8E6E2), .panel = hex(0xFFFFFF), .card = hex(0xFFFFFF),
+            .hover = hex(0xF1EEEA), .press = hex(0xE6E1DA), .border = hex(0xE0DBD4), .line = hex(0xEEEAE5),
+            .text = hex(0x1B1A18), .dim = hex(0x67625C), .faint = hex(0xA29C95),
+            .accent = hex(0x8F7A65), .on_accent = hex(0xFFFFFF),
+            .cpu = hex(0x9C7B5B), .mem = hex(0x7D7290), .disk = hex(0x74845F), .net = hex(0xBC8A47),
+            .gpu = hex(0xA9655A), .kernel = hex(0x5A4A3C),
+            .good = hex(0x6B8A5A), .warn = hex(0xB5822C), .bad = hex(0xB4503E), .sel = hex(0xEDE3D7),
+            .primary = hex(0x555451), .on_primary = hex(0xFFFFFF),
+            .heat_lo = hex(0xF4ECE2), .heat_hi = hex(0xD8B28C),
+            .metal_lo = hex(0x52514E), .metal_hi = hex(0xE8DDD0),
+            .metal_text = hex(0xF3EFEA), .metal_dim = hex(0xC2BAB0),
+            .dark = false, .serif = true, .metal = true, .id = THEME_STONE,
+        };
+    } else {
+        T = (Theme){
+            .bg = hex(0x0B0E13), .side = hex(0x0E1218), .panel = hex(0x12171F), .card = hex(0x161C26),
+            .hover = hex(0x1D2430), .press = hex(0x242C3A), .border = hex(0x232B38), .line = hex(0x1A212C),
+            .text = hex(0xE8EBF1), .dim = hex(0x9AA3B2), .faint = hex(0x5F6878),
+            .accent = hex(0x4CC2FF), .on_accent = hex(0x04121C),
+            .cpu = hex(0x4CC2FF), .mem = hex(0xB48CFF), .disk = hex(0x4ADE80), .net = hex(0xFFB347),
+            .gpu = hex(0xFF6B9A), .kernel = hex(0x1F7FB8),
+            .good = hex(0x3DDC97), .warn = hex(0xFFC857), .bad = hex(0xFF5D5D), .sel = hex(0x1B3348),
+            .primary = hex(0x4CC2FF), .on_primary = hex(0x04121C),
+            .heat_lo = hex(0x3A3320), .heat_hi = hex(0x7A3A1E),
+            .dark = true, .id = THEME_DARK,
         };
     }
 }
@@ -63,9 +85,7 @@ Color ui_heat(float t)
     if (t <= 0.001f) return BLANK;
     if (t > 1) t = 1;
     /* soft amber that warms toward orange-red, like Task Manager's columns */
-    Color lo = T.dark ? hex(0x3A3320) : hex(0xFFF4CE);
-    Color hi = T.dark ? hex(0x7A3A1E) : hex(0xFFB07A);
-    Color c = col_mix(lo, hi, sqrtf(t));
+    Color c = col_mix(T.heat_lo, T.heat_hi, sqrtf(t));
     c.a = (unsigned char)(255 * (0.35f + 0.65f * fminf(1.0f, t * 4)));
     return c;
 }
@@ -79,12 +99,17 @@ Color ui_heat(float t)
 typedef struct { int weight, px; Font f; } FontSlot;
 static FontSlot g_fonts[48];
 static int      g_nfonts;
-static const char* g_font_files[FW_COUNT][3] = {
+#define FONT_ALTS 4
+static const char* g_font_files[FW_COUNT][FONT_ALTS] = {
     { "C:/Windows/Fonts/segoeui.ttf", NULL, NULL },
     { "C:/Windows/Fonts/seguisb.ttf", "C:/Windows/Fonts/segoeui.ttf", NULL },
     { "C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/segoeui.ttf", NULL },
     { "C:/Windows/Fonts/CascadiaMono.ttf", "C:/Windows/Fonts/consola.ttf", NULL },
     { "C:/Windows/Fonts/SegoeIcons.ttf", "C:/Windows/Fonts/segmdl2.ttf", NULL },
+    /* display serif: Palatino Linotype first for its lining figures (Georgia's
+     * old-style digits dance in numeric readouts), Segoe UI as the last resort */
+    { "C:/Windows/Fonts/pala.ttf", "C:/Windows/Fonts/georgia.ttf", "C:/Windows/Fonts/times.ttf",
+      "C:/Windows/Fonts/segoeui.ttf" },
 };
 static int  g_text_cps[512];
 static int  g_ntext_cps;
@@ -162,6 +187,32 @@ static Font load_sharp(const char* path, int px, int* cps, int n, bool sharpen)
     return f;
 }
 
+/* stb_truetype sizes a font by hhea ascent - descent. FONT_K is that ratio
+ * for Segoe UI; serif faces differ (Georgia ~1.14), so for them read it from
+ * the file so a 24 px serif has the same em as a 24 px Segoe UI. */
+static float font_em_k(const char* path)
+{
+    int sz = 0;
+    unsigned char* d = LoadFileData(path, &sz);
+    if (!d) return FONT_K;
+    int asc = 0, desc = 0, upem = 0;
+    int n = sz >= 12 ? (d[4] << 8) | d[5] : 0;
+    for (int i = 0; i < n && 12 + (i + 1) * 16 <= sz; ++i) {
+        const unsigned char* t = d + 12 + i * 16;
+        uint32_t off = ((uint32_t)t[8] << 24) | ((uint32_t)t[9] << 16) | ((uint32_t)t[10] << 8) | t[11];
+        if (!memcmp(t, "hhea", 4) && off + 8 <= (uint32_t)sz) {
+            asc = (int16_t)((d[off + 4] << 8) | d[off + 5]);
+            desc = (int16_t)((d[off + 6] << 8) | d[off + 7]);
+        } else if (!memcmp(t, "head", 4) && off + 20 <= (uint32_t)sz) {
+            upem = (d[off + 18] << 8) | d[off + 19];
+        }
+    }
+    UnloadFileData(d);
+    if (upem <= 0 || asc - desc <= 0) return FONT_K;
+    float k = (float)(asc - desc) / (float)upem;
+    return k < 0.8f || k > 2.0f ? FONT_K : k;
+}
+
 /* The logical draw size that maps the atlas exactly 1:1 onto screen pixels. */
 static float font_size(Font f) { return (float)f.baseSize / ui.scale; }
 
@@ -172,10 +223,16 @@ static Font font_get(int weight, float size)
     for (int i = 0; i < g_nfonts; ++i)
         if (g_fonts[i].weight == weight && g_fonts[i].px == px) return g_fonts[i].f;
     Font f = { 0 };
-    for (int k = 0; k < 3 && g_font_files[weight][k]; ++k) {
-        if (!FileExists(g_font_files[weight][k])) continue;
-        if (weight == FW_ICON) f = load_sharp(g_font_files[weight][k], px, g_icon_cps, g_nicon_cps, false);
-        else f = load_sharp(g_font_files[weight][k], px, g_text_cps, g_ntext_cps, true);
+    for (int k = 0; k < FONT_ALTS && g_font_files[weight][k]; ++k) {
+        const char* path = g_font_files[weight][k];
+        if (!FileExists(path)) continue;
+        if (weight == FW_ICON) f = load_sharp(path, px, g_icon_cps, g_nicon_cps, false);
+        else if (weight == FW_SERIF) {
+            /* cache key stays `px`; the atlas is baked at the face's own em */
+            int spx = (int)floorf(size * font_em_k(path) * ui.scale + 0.5f);
+            f = load_sharp(path, spx < 6 ? 6 : spx, g_text_cps, g_ntext_cps, true);
+        }
+        else f = load_sharp(path, px, g_text_cps, g_ntext_cps, true);
         if (f.texture.id) break;
     }
     if (!f.texture.id) f = GetFontDefault();
@@ -268,6 +325,33 @@ void ui_rrect_line(Rectangle r, float radius, float thick, Color c)
 void ui_vgradient(Rectangle r, Color top, Color bottom)
 {
     DrawRectangleGradientV((int)r.x, (int)r.y, (int)ceilf(r.width), (int)ceilf(r.height), top, bottom);
+}
+
+void ui_metal(Rectangle r, float radius)
+{
+    if (r.width <= 0 || r.height <= 0) return;
+    ui_rrect(r, radius, T.metal_lo);
+    /* Four nested, slanted bands build a soft diagonal sheen. They are
+     * clipped to the strip between the rounded corners, so the corners keep
+     * their shape without a rounded clip path. */
+    Rectangle clip = { r.x + radius, r.y, r.width - 2 * radius, r.height };
+    if (clip.width > 0) {
+        ui_scissor_push(clip);
+        float cx = r.x + r.width * 0.42f, slant = r.height * 0.55f;
+        Color c = col_alpha(T.metal_hi, 0.09f);
+        for (int i = 0; i < 4; ++i) {
+            float hw = r.width * (0.04f + 0.055f * i);
+            Vector2 tl = { cx - hw + slant, r.y }, tr = { cx + hw + slant, r.y };
+            Vector2 bl = { cx - hw - slant, r.y + r.height }, br = { cx + hw - slant, r.y + r.height };
+            DrawTriangle(tl, bl, br, c);   /* raylib wants counter-clockwise order */
+            DrawTriangle(tl, br, tr, c);
+        }
+        ui_scissor_pop();
+    }
+    /* a faint top highlight and hairline, like light catching an edge */
+    DrawRectangleRec((Rectangle){ r.x + radius, r.y + 1, fmaxf(0, r.width - 2 * radius), 1 },
+                     col_alpha(T.metal_hi, 0.22f));
+    ui_rrect_line(r, radius, 1, col_alpha(T.metal_hi, 0.16f));
 }
 
 static Rectangle g_sc_stack[16];
@@ -493,8 +577,8 @@ bool ui_button(Rectangle r, const char* label, int icon, int style, bool enabled
     bool click = enabled && ui_clicked(r);
     Color bg = T.card, fg = T.text, bd = T.border;
     switch (style) {
-    case BTN_PRIMARY: bg = T.accent; fg = T.on_accent; bd = BLANK;
-        if (hov) bg = col_mix(T.accent, WHITE, 0.12f);
+    case BTN_PRIMARY: bg = T.primary; fg = T.on_primary; bd = BLANK;
+        if (hov) bg = col_mix(T.primary, WHITE, 0.12f);
         break;
     case BTN_DANGER: bg = col_alpha(T.bad, 0.16f); fg = T.bad; bd = col_alpha(T.bad, 0.35f);
         if (hov) bg = col_alpha(T.bad, 0.26f);

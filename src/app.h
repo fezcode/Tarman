@@ -44,7 +44,8 @@ typedef struct {
     SysState* st;
     int       page;
     bool      nav_collapsed;
-    bool      dark, topmost;
+    int       theme;              /* ThemeId */
+    bool      topmost;
     float     zoom;               /* user scale on top of the monitor DPI */
     int       window_idx;         /* 0: 1 min, 1: 5 min, 2: 10 min */
     bool      paused;
