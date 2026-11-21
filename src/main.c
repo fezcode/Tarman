@@ -132,31 +132,37 @@ static const NavItem NAV[] = {
     { PAGE_FIRMWARE, "Firmware", IC_CHIP },
 };
 
-static void nav_item(Rectangle r, int page, const char* label, int icon, bool collapsed)
+static void nav_item(Rectangle r, int page, const char* label, int icon, bool collapsed, Rectangle clip)
 {
     bool sel = app.page == page;
-    bool hov = ui_hover(r);
-    if (sel) ui_rrect(r, 7, T.dark ? T.hover : T.press);
-    else if (hov) ui_rrect(r, 7, col_alpha(T.hover, T.dark ? 0.7f : 1.0f));
-    if (sel) ui_rrect((Rectangle){ r.x, r.y + 10, 3, r.height - 20 }, 1.5f, T.accent);
+    bool hov = CheckCollisionPointRec(ui.mouse, clip) && ui_hover(r);
+    float radius = T.serif ? r.height * 0.5f : 7;
+    if (sel) ui_rrect(r, radius, T.metal ? T.primary : (T.dark ? T.hover : T.press));
+    else if (hov) ui_rrect(r, radius, col_alpha(T.hover, T.dark ? 0.7f : 1.0f));
+    if (sel && !T.metal) ui_rrect((Rectangle){ r.x, r.y + 10, 3, r.height - 20 }, 1.5f, T.accent);
     float ix = collapsed ? r.x + r.width / 2 : r.x + 24;
-    ui_icon(ix, r.y + r.height / 2, icon, 16, sel ? T.accent : (hov ? T.text : T.dim));
+    ui_icon(ix, r.y + r.height / 2, icon, 16, sel ? (T.metal ? T.champagne_hi : T.accent) : (hov ? T.text : T.dim));
     if (!collapsed) ui_text_fit((Rectangle){ r.x + 48, r.y, r.width - 56, r.height }, label, 13.5f,
-                                sel ? FW_SEMI : FW_REG, sel ? T.text : T.dim, AL_LEFT);
+                                sel ? FW_SEMI : FW_REG, sel ? (T.metal ? T.on_primary : T.text) : T.dim, AL_LEFT);
     if (hov) {
         ui.cursor = MOUSE_CURSOR_POINTING_HAND;
         if (collapsed) ui_tooltip(label);
     }
-    if (ui_clicked(r) && app.page != page) { app.page = page; settings_save(); }
+    if (hov && ui_clicked(r) && app.page != page) { app.page = page; settings_save(); }
 }
 
 static void mini_meter(Rectangle r, const char* label, float t, const char* value, Color c)
 {
     /* on a metal panel the meters take the panel's light ink */
-    ui_text_fit((Rectangle){ r.x, r.y, 60, 16 }, label, 11.5f, FW_REG, T.metal ? T.metal_dim : T.dim, AL_LEFT);
-    ui_text_fit((Rectangle){ r.x + 60, r.y, r.width - 60, 16 }, value, 11.5f, FW_SEMI,
+    ui_text_fit((Rectangle){ r.x, r.y, 60, 16 }, label, 11.5f, ui_label_weight(), T.metal ? T.metal_dim : T.dim, AL_LEFT);
+    ui_text_fit((Rectangle){ r.x + 60, r.y, r.width - 60, 16 }, value, 11.5f, ui_control_weight(),
                 T.metal ? T.metal_text : T.text, AL_RIGHT);
-    ui_bar((Rectangle){ r.x, r.y + 19, r.width, 4 }, t, T.metal ? col_mix(c, T.metal_hi, 0.35f) : c);
+    Rectangle bar = { r.x, r.y + 19, r.width, 4 };
+    if (T.metal) {
+        ui_rrect(bar, 2, col_alpha(T.metal_hi, 0.15f));
+        bar.width *= fminf(1, fmaxf(0, t));
+        ui_rrect(bar, 2, T.champagne_hi);
+    } else ui_bar(bar, t, c);
 }
 
 static void draw_sidebar(Rectangle r)
@@ -174,19 +180,35 @@ static void draw_sidebar(Rectangle r)
     }
     rect_cut_top(&in, 8);
 
+    /* Reserve Settings before laying out navigation. Short windows compress
+     * rows, then scroll, so the last page can never overlap the footer. */
+    Rectangle bottom = rect_cut_bottom(&in, 42);
+    int items = 0, groups = 0;
+    for (size_t i = 0; i < sizeof NAV / sizeof NAV[0]; ++i)
+        if (NAV[i].page < 0) ++groups; else ++items;
+    float group_h = col ? 14 : 30;
+    float row_h = fminf(40, fmaxf(32, (in.height - groups * group_h) / items - 2));
+    float content_h = items * (row_h + 2) + groups * group_h;
+    Rectangle view = rect_cut_top(&in, fminf(in.height, content_h));
+    static float nav_scroll;
+    ui_wheel(view, &nav_scroll, row_h + 2);
+    nav_scroll = fminf(fmaxf(0, content_h - view.height), fmaxf(0, nav_scroll));
+    Rectangle nav = { view.x, view.y - nav_scroll, view.width, content_h };
+    ui_scissor_push(view);
     for (size_t i = 0; i < sizeof NAV / sizeof NAV[0]; ++i) {
         if (NAV[i].page < 0) {
-            Rectangle s = rect_cut_top(&in, col ? 14 : 30);
+            Rectangle s = rect_cut_top(&nav, group_h);
             if (col) DrawRectangleRec((Rectangle){ s.x + 12, s.y + 6, s.width - 24, 1 }, T.border);
             else ui_text_fit((Rectangle){ s.x + 14, s.y + 8, s.width - 20, 20 }, NAV[i].label, 11, FW_SEMI, T.faint, AL_LEFT);
             continue;
         }
-        nav_item(rect_cut_top(&in, 40), NAV[i].page, NAV[i].label, NAV[i].icon, col);
-        rect_cut_top(&in, 2);
+        nav_item(rect_cut_top(&nav, row_h), NAV[i].page, NAV[i].label, NAV[i].icon, col, view);
+        rect_cut_top(&nav, 2);
     }
-
-    Rectangle bottom = rect_cut_bottom(&in, 42);
-    nav_item(bottom, PAGE_SETTINGS, "Settings", IC_SETTINGS, col);
+    ui_scissor_pop();
+    ui_scrollbar((Rectangle){ view.x + view.width - 6, view.y, 6, view.height },
+                 &nav_scroll, content_h, view.height, ui_id("sidebar-scroll", 0));
+    nav_item(bottom, PAGE_SETTINGS, "Settings", IC_SETTINGS, col, bottom);
 
     if (!col && in.height > 150) {
         SysState* st = app.st;
@@ -617,7 +639,7 @@ int main(int argc, char** argv)
         }
     }
 
-    app.theme = THEME_DARK;
+    app.theme = THEME_STONE;
     app.zoom = 1.0f;
     app.window_idx = 2;
     app.proc_sort = 0;
@@ -635,6 +657,7 @@ int main(int argc, char** argv)
     app.ev_show_proc = true;
     TL.pin = -1;
     TL.hover = TL.hover_next = -1;
+    sys_migrate_data();
     settings_load();
     if (force_theme >= 0) app.theme = force_theme;
     if (force_page >= 0) app.page = force_page;

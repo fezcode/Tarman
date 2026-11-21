@@ -85,7 +85,8 @@ steps in order and stop/report any failure before proceeding:
 - If `cmake/CopyRuntimeDeps.cmake` starts bundling more DLLs, add them to
   `forge.toml` and to the payload check in `installer.ps1`.
 - Maintain HKCU `Software\Fezcode\Tarman` InstallDir and Version values.
-- Preserve user data under `%APPDATA%/Tarman` (settings.ini, logs\) unless the
+- Preserve user data under `%APPDATA%/fezcode/Tarman` (settings.ini) and
+  `%LOCALAPPDATA%/fezcode/Tarman` (logs\) unless the
   user chooses the installer's option to remove settings/data.
 - Fail on inconsistent versions, failed builds, missing payload, or non-GUI
   Setup executables. Never report an old installer as a new success.

@@ -61,6 +61,19 @@ add_executable(tarman WIN32
 )
 
 target_include_directories(tarman PRIVATE src)
+# Keep the showcase typefaces inside the executable, including portable builds.
+set(TARMAN_FONT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts")
+set(_font_header "/* Generated from the bundled OFL fonts. */\n")
+foreach(_font IN ITEMS InstrumentSerif-Regular DMMono-Regular DMMono-Medium)
+  set(_font_file "${TARMAN_FONT_DIR}/${_font}.ttf")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_font_file}")
+  file(READ "${_font_file}" _font_hex HEX)
+  string(REGEX REPLACE "(..)" "0x\\1," _font_bytes "${_font_hex}")
+  string(REPLACE "-" "_" _font_symbol "${_font}")
+  string(APPEND _font_header "static const unsigned char ${_font_symbol}[] = {${_font_bytes}};\n")
+endforeach()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/theme_fonts.h" "${_font_header}")
+target_include_directories(tarman PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(tarman PRIVATE
   ${RAYLIB_STATIC} ${GLFW_IMPORT}
   opengl32 gdi32 winmm
@@ -75,6 +88,11 @@ target_link_options(tarman PRIVATE -static-libgcc
 # The installer ships build/LICENSE.txt: Forge bundles the license step's own
 # file as display-only and skips a [[files]] entry with the same source path.
 configure_file(LICENSE.txt "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.txt" COPYONLY)
+foreach(_font_license IN ITEMS instrumentserif-OFL.txt dmmono-OFL.txt)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${TARMAN_FONT_DIR}/${_font_license}")
+  file(READ "${TARMAN_FONT_DIR}/${_font_license}" _license_text)
+  file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.txt" "\n\nBundled font: ${_font_license}\n\n${_license_text}")
+endforeach()
 
 # Bundle the MinGW runtime DLLs (glfw3.dll and whatever it pulls in) next to
 # the exe so build\ is self-contained -- no PATH dependency on MSYS2.

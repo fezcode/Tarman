@@ -111,14 +111,16 @@ static void draw_device_list(Rectangle r, Dev* devs, int n)
         Rectangle rr = { r.x, y + 2, r.width - 12, RH - 4 };
         bool sel = app.perf_dev == i;
         bool hov = ui_hover(rr);
-        if (sel) ui_rrect(rr, 8, T.sel);
+        if (sel && T.metal) ui_metal(rr, 12);
+        else if (sel) ui_rrect(rr, 8, T.sel);
         else if (hov) ui_rrect(rr, 8, T.hover);
-        if (sel) ui_rrect((Rectangle){ rr.x, rr.y + 14, 3, rr.height - 28 }, 1.5f, T.accent);
+        if (sel && !T.metal) ui_rrect((Rectangle){ rr.x, rr.y + 14, 3, rr.height - 28 }, 1.5f, T.accent);
         char title[96], sub[160];
         Color c;
         const float *ring, *ring2;
         float maxv;
         dev_title(&devs[i], title, sizeof title, sub, sizeof sub, &c, &ring, &ring2, &maxv);
+        if (sel && T.metal) c = T.champagne_hi;
         Rectangle sp = { rr.x + 10, rr.y + 10, 74, rr.height - 20 };
         ui_rrect(sp, 4, col_alpha(c, 0.06f));
         ui_rrect_line(sp, 4, 1, col_alpha(c, 0.45f));
@@ -130,8 +132,10 @@ static void draw_device_list(Rectangle r, Dev* devs, int n)
         } else {
             ui_sparkline(rect_inset(sp, 1, 1), ring, 0, TL.latest, maxv, c);
         }
-        ui_text_fit((Rectangle){ sp.x + sp.width + 12, rr.y + 12, rr.width - sp.width - 28, 22 }, title, 14, FW_SEMI, T.text, AL_LEFT);
-        ui_text_fit((Rectangle){ sp.x + sp.width + 12, rr.y + 34, rr.width - sp.width - 28, 20 }, sub, 12, FW_REG, T.dim, AL_LEFT);
+        ui_text_fit((Rectangle){ sp.x + sp.width + 12, rr.y + 12, rr.width - sp.width - 28, 22 }, title, 14, FW_SEMI,
+                    sel && T.metal ? T.metal_text : T.text, AL_LEFT);
+        ui_text_fit((Rectangle){ sp.x + sp.width + 12, rr.y + 34, rr.width - sp.width - 28, 20 }, sub, 12, FW_REG,
+                    sel && T.metal ? T.metal_dim : T.dim, AL_LEFT);
         if (hov) ui.cursor = MOUSE_CURSOR_POINTING_HAND;
         if (ui_clicked(rr)) app.perf_dev = i;
     }
@@ -166,7 +170,8 @@ static void detail_cpu(Rectangle r)
     Rectangle tools = rect_cut_top(&r, 38);
     static const char* views[] = { "Overall", "Logical processors" };
     int v = app.perf_cores ? 1 : 0;
-    if (ui_segmented((Rectangle){ tools.x, tools.y, 260, 30 }, views, 2, &v)) app.perf_cores = v == 1;
+    float view_w = T.serif ? 300 : 260;
+    if (ui_segmented((Rectangle){ tools.x, tools.y, view_w, 30 }, views, 2, &v)) app.perf_cores = v == 1;
     char cap[96];
     snprintf(cap, sizeof cap, "%% Utilization over %s", window_label());
     Rectangle stats = rect_cut_bottom(&r, 214);

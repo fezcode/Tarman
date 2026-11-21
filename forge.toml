@@ -7,7 +7,7 @@
 
 [app]
 name    = "Tarman"
-version = "0.1.3"
+version = "0.2.1"
 id      = "com.fezcode.tarman"
 icon    = "resources/tarman.ico"
 
@@ -29,9 +29,11 @@ default_dir = "${LOCALAPPDATA}/Programs/Tarman"
 
 [uninstall]
 keep = []
-# settings.ini and the activity logs live here; a plain uninstall leaves them,
-# "Also remove my settings and data" (--purge-settings when silent) deletes them.
-settings_dirs = ["${APPDATA}/Tarman"]
+# settings.ini lives in the first folder and the activity logs in the second;
+# a plain uninstall leaves them, "Also remove my settings and data"
+# (--purge-settings when silent) deletes them. Builds before 0.2.0 used
+# ${APPDATA}/Tarman; the app moves it into these folders on first start.
+settings_dirs = ["${APPDATA}/fezcode/Tarman", "${LOCALAPPDATA}/fezcode/Tarman"]
 
 [[steps]]
 type  = "welcome"
@@ -62,7 +64,7 @@ body  = "Copying files to your system."
 [[steps]]
 type  = "finish"
 title = "Installation Complete"
-body  = "Tarman has been installed successfully.\n\nSettings and activity logs live in %APPDATA%\\Tarman and stay there if you ever uninstall, unless you ask for them to go too.\n\nClick Finish to close the installer."
+body  = "Tarman has been installed successfully.\n\nSettings live in %APPDATA%\\fezcode\\Tarman and activity logs in %LOCALAPPDATA%\\fezcode\\Tarman; they stay there if you ever uninstall, unless you ask for them to go too.\n\nClick Finish to close the installer."
 
 [[steps.launches]]
 kind    = "app"

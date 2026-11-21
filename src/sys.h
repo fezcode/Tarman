@@ -281,7 +281,7 @@ bool sys_window_active(void);
  *
  * Tarman's own log: actions taken, failures, and process starts/exits seen
  * by the sampler. Kept in memory for the Events page and appended to
- * %APPDATA%\Tarman\logs\tarman-YYYY-MM-DD.log (actions and errors only;
+ * %LOCALAPPDATA%\fezcode\Tarman\logs\tarman-YYYY-MM-DD.log (actions and errors only;
  * process churn would drown the file). */
 
 enum { LOG_LV_ERROR = 2, LOG_LV_WARN = 3, LOG_LV_INFO = 4 };
@@ -422,6 +422,9 @@ int64_t sys_now_ms(void);
 void    sys_format_clock(int64_t unix_ms, char* out, int n);      /* "14:32:05" */
 void    sys_format_filetime(uint64_t ft, char* out, int n);       /* local date+time */
 void    sys_attach_console(void);
-bool    sys_settings_path(char* out, int n);
+bool    sys_settings_path(char* out, int n);   /* %APPDATA%\fezcode\Tarman\settings.ini */
+/* One-time move of the pre-0.2.0 %APPDATA%\Tarman folder into the fezcode
+ * folders; idempotent, best-effort, call before settings are read. */
+void    sys_migrate_data(void);
 
 #endif /* TARMAN_SYS_H */

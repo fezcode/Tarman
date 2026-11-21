@@ -599,6 +599,51 @@ static void draw_details(Rectangle r)
 
 /* ---- page ---------------------------------------------------------------------------------- */
 
+static void resource_summary(Rectangle* area)
+{
+    /* Keep the process table useful at small sizes and high interface scales. */
+    if (!T.metal || area->height < 460 || area->width < 600) return;
+    SysState* st = app.st;
+    Rectangle row = rect_cut_top(area, 124);
+    row.height -= 14;
+    Rectangle cpu = { row.x, row.y, row.width * 0.31f, row.height };
+    ui_metal(cpu, 16);
+    Rectangle in = rect_inset(cpu, 18, 12);
+    ui_text_fit((Rectangle){ in.x, in.y, 90, 18 }, "CPU", 11, FW_TECH, T.metal_dim, AL_LEFT);
+    const char* state = app.paused ? "Paused" : "Live";
+    ui_text_fit((Rectangle){ in.x + 90, in.y, in.width - 90, 18 }, state, 10, FW_TECH, T.champagne_hi, AL_RIGHT);
+    char value[64];
+    snprintf(value, sizeof value, "%.1f%%", st->cpu.usage);
+    ui_text_fit((Rectangle){ in.x, in.y + 18, in.width, 46 }, value, 38, FW_SERIF, T.metal_text, AL_LEFT);
+    ui_sparkline((Rectangle){ in.x, in.y + 68, in.width, 18 }, st->cpu.h_usage.v,
+                 0, TL.latest, 100, T.champagne_hi);
+
+    Rectangle metrics = { cpu.x + cpu.width + 12, row.y, row.width - cpu.width - 12, row.height };
+    card(metrics);
+    float cw = metrics.width / 3;
+    float disk = 0;
+    for (int i = 0; i < st->ndisk; ++i) disk = fmaxf(disk, st->disk[i].active);
+    double network = 0;
+    for (int i = 0; i < st->nnet; ++i) network += st->net[i].recv_bps + st->net[i].send_bps;
+    const char* labels[] = { "Memory", "Disk", "Network" };
+    const char* notes[] = { "Physical usage", "Busiest drive", "Send + receive" };
+    Color colors[] = { T.mem, T.disk, T.net };
+    for (int i = 0; i < 3; ++i) {
+        float x = metrics.x + cw * i;
+        if (i) DrawRectangleRec((Rectangle){ x, row.y + 18, 1, row.height - 36 }, T.line);
+        Rectangle cell = { x + 16, row.y + 13, cw - 32, 18 };
+        ui_text_fit(cell, labels[i], 11, FW_TECH, T.dim, AL_LEFT);
+        if (i == 0) snprintf(value, sizeof value, "%.0f%%", st->mem.load);
+        else if (i == 1) snprintf(value, sizeof value, "%.0f%%", disk);
+        else fmt_bits(network, value, sizeof value);
+        ui_text_fit((Rectangle){ cell.x, cell.y + 20, cell.width, 40 }, value,
+                    i == 2 ? 25 : 32, FW_SERIF, T.text, AL_LEFT);
+        DrawCircleV((Vector2){ cell.x + 3, row.y + 88 }, 3, colors[i]);
+        ui_text_fit((Rectangle){ cell.x + 12, row.y + 79, cell.width - 12, 18 },
+                    notes[i], 10, FW_TECH, T.dim, AL_LEFT);
+    }
+}
+
 void page_processes(Rectangle r)
 {
     SysState* st = app.st;
@@ -631,6 +676,7 @@ void page_processes(Rectangle r)
         if (ui_button(rr, "Run new task", IC_RUN, BTN_SUBTLE, true)) open_run_dialog();
     }
 
+    resource_summary(&r);
     build_rows();
 
     /* keyboard */

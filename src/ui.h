@@ -32,6 +32,7 @@ typedef struct {
     Color heat_lo, heat_hi;             /* ui_heat() ramp                        */
     Color metal_lo, metal_hi;           /* brushed-metal panel base and sheen    */
     Color metal_text, metal_dim;        /* text drawn on a metal panel           */
+    Color champagne_lo, champagne_hi;   /* warm metal highlights                 */
     bool  dark;
     bool  serif;                        /* headline numbers/titles in FW_SERIF   */
     bool  metal;                        /* hero panels use ui_metal()            */
@@ -65,11 +66,14 @@ enum {
 
 /* ---- fonts & text ---------------------------------------------------------- */
 
-typedef enum { FW_REG = 0, FW_SEMI, FW_BOLD, FW_MONO, FW_ICON, FW_SERIF, FW_COUNT } FontWeight;
+typedef enum { FW_REG = 0, FW_SEMI, FW_BOLD, FW_MONO, FW_ICON, FW_SERIF,
+               FW_TECH, FW_TECH_MEDIUM, FW_COUNT } FontWeight;
 
 /* Weight for big headline numbers and titles: the theme's serif when it has
  * one, otherwise the semibold UI face the other themes always used. */
 static inline int ui_display_weight(void) { return T.serif ? FW_SERIF : FW_SEMI; }
+static inline int ui_label_weight(void) { return T.serif ? FW_TECH : FW_REG; }
+static inline int ui_control_weight(void) { return T.serif ? FW_TECH_MEDIUM : FW_SEMI; }
 typedef enum { AL_LEFT = 0, AL_CENTER, AL_RIGHT } Align;
 
 void  ui_fonts_init(void);

@@ -482,7 +482,7 @@ void page_settings(Rectangle r)
     Rectangle ctl;
 
     ui_text_fit(rect_cut_top(&in, 34), "Appearance", 12, FW_SEMI, T.accent, AL_LEFT);
-    setting_row(&in, "Theme", "Dark is easier on the eyes; Stone is a warm, light editorial look.", &ctl, 270);
+    setting_row(&in, "Theme", "Stone pairs serif headings, champagne accents and brushed charcoal panels.", &ctl, 270);
     static const char* themes[] = { "Dark", "Light", "Stone" };
     static const int theme_ids[] = { THEME_DARK, THEME_LIGHT, THEME_STONE };
     int th = 0;
@@ -516,7 +516,8 @@ void page_settings(Rectangle r)
 
     setting_row(&in, "Administrator", app.st->elevated
                      ? "Running elevated: every process, service and startup entry can be managed."
-                     : "Some processes, services and startup entries need elevation to manage.", &ctl, 210);
+                     : "Some processes, services and startup entries need elevation to manage.",
+                &ctl, ui_button_w("Restart as administrator", IC_SHIELD));
     if (app.st->elevated) ui_badge(ctl.x + ctl.width - 90, ctl.y + 16, "Elevated", T.good);
     else if (ui_button(ctl, "Restart as administrator", IC_SHIELD, BTN_PRIMARY, true)) {
         if (sys_restart_elevated()) app.quit = true;

@@ -6,6 +6,7 @@
 
 #include "rlgl.h"
 #include "sys.h"
+#include "theme_fonts.h"
 
 Theme    T;
 UI       ui;
@@ -35,17 +36,18 @@ void ui_theme(int id)
          * near-black ink, a champagne accent and charcoal primary buttons.
          * Series colours are desaturated earth tones that stay apart. */
         T = (Theme){
-            .bg = hex(0xEFEEEC), .side = hex(0xE8E6E2), .panel = hex(0xFFFFFF), .card = hex(0xFFFFFF),
-            .hover = hex(0xF1EEEA), .press = hex(0xE6E1DA), .border = hex(0xE0DBD4), .line = hex(0xEEEAE5),
-            .text = hex(0x1B1A18), .dim = hex(0x67625C), .faint = hex(0xA29C95),
+            .bg = hex(0xEFEEEC), .side = hex(0xE4E2DE), .panel = hex(0xFFFFFF), .card = hex(0xF7F6F4),
+            .hover = hex(0xEEEDEA), .press = hex(0xE0DDD9), .border = hex(0xD3CFC9), .line = hex(0xE2DFDA),
+            .text = hex(0x1B1A18), .dim = hex(0x5C5955), .faint = hex(0x8A857F),
             .accent = hex(0x8F7A65), .on_accent = hex(0xFFFFFF),
-            .cpu = hex(0x9C7B5B), .mem = hex(0x7D7290), .disk = hex(0x74845F), .net = hex(0xBC8A47),
+            .cpu = hex(0x4A4948), .mem = hex(0x7D7290), .disk = hex(0x74845F), .net = hex(0xA17D49),
             .gpu = hex(0xA9655A), .kernel = hex(0x5A4A3C),
             .good = hex(0x6B8A5A), .warn = hex(0xB5822C), .bad = hex(0xB4503E), .sel = hex(0xEDE3D7),
-            .primary = hex(0x555451), .on_primary = hex(0xFFFFFF),
+            .primary = hex(0x4A4948), .on_primary = hex(0xFFFFFF),
             .heat_lo = hex(0xF4ECE2), .heat_hi = hex(0xD8B28C),
-            .metal_lo = hex(0x52514E), .metal_hi = hex(0xE8DDD0),
-            .metal_text = hex(0xF3EFEA), .metal_dim = hex(0xC2BAB0),
+            .metal_lo = hex(0x434240), .metal_hi = hex(0xF1EEE9),
+            .metal_text = hex(0xF1EEE9), .metal_dim = hex(0xD0CBC4),
+            .champagne_lo = hex(0xCBB9A6), .champagne_hi = hex(0xF1E7DB),
             .dark = false, .serif = true, .metal = true, .id = THEME_STONE,
         };
     } else {
@@ -110,6 +112,8 @@ static const char* g_font_files[FW_COUNT][FONT_ALTS] = {
      * old-style digits dance in numeric readouts), Segoe UI as the last resort */
     { "C:/Windows/Fonts/pala.ttf", "C:/Windows/Fonts/georgia.ttf", "C:/Windows/Fonts/times.ttf",
       "C:/Windows/Fonts/segoeui.ttf" },
+    { "C:/Windows/Fonts/consola.ttf", NULL },
+    { "C:/Windows/Fonts/consolab.ttf", "C:/Windows/Fonts/consola.ttf", NULL },
 };
 static int  g_text_cps[512];
 static int  g_ntext_cps;
@@ -161,17 +165,14 @@ static void build_lut(void)
     }
 }
 
-static Font load_sharp(const char* path, int px, int* cps, int n, bool sharpen)
+static Font load_sharp_data(const unsigned char* data, int sz, int px, int* cps, int n, bool sharpen)
 {
     Font f = { 0 };
-    int sz = 0;
-    unsigned char* data = LoadFileData(path, &sz);
     if (!data) return f;
     f.baseSize = px;
     f.glyphCount = n;
     f.glyphPadding = 4;
     f.glyphs = LoadFontData(data, sz, px, cps, n, FONT_DEFAULT);
-    UnloadFileData(data);
     if (!f.glyphs) return (Font){ 0 };
     if (!g_lut[255]) build_lut();
     if (sharpen)
@@ -187,13 +188,20 @@ static Font load_sharp(const char* path, int px, int* cps, int n, bool sharpen)
     return f;
 }
 
+static Font load_sharp(const char* path, int px, int* cps, int n, bool sharpen)
+{
+    int sz = 0;
+    unsigned char* data = LoadFileData(path, &sz);
+    Font f = load_sharp_data(data, sz, px, cps, n, sharpen);
+    if (data) UnloadFileData(data);
+    return f;
+}
+
 /* stb_truetype sizes a font by hhea ascent - descent. FONT_K is that ratio
  * for Segoe UI; serif faces differ (Georgia ~1.14), so for them read it from
  * the file so a 24 px serif has the same em as a 24 px Segoe UI. */
-static float font_em_k(const char* path)
+static float font_data_em_k(const unsigned char* d, int sz)
 {
-    int sz = 0;
-    unsigned char* d = LoadFileData(path, &sz);
     if (!d) return FONT_K;
     int asc = 0, desc = 0, upem = 0;
     int n = sz >= 12 ? (d[4] << 8) | d[5] : 0;
@@ -207,10 +215,18 @@ static float font_em_k(const char* path)
             upem = (d[off + 18] << 8) | d[off + 19];
         }
     }
-    UnloadFileData(d);
     if (upem <= 0 || asc - desc <= 0) return FONT_K;
     float k = (float)(asc - desc) / (float)upem;
     return k < 0.8f || k > 2.0f ? FONT_K : k;
+}
+
+static float font_em_k(const char* path)
+{
+    int sz = 0;
+    unsigned char* data = LoadFileData(path, &sz);
+    float k = font_data_em_k(data, sz);
+    if (data) UnloadFileData(data);
+    return k;
 }
 
 /* The logical draw size that maps the atlas exactly 1:1 onto screen pixels. */
@@ -218,12 +234,22 @@ static float font_size(Font f) { return (float)f.baseSize / ui.scale; }
 
 static Font font_get(int weight, float size)
 {
+    if (weight == FW_MONO && T.serif) weight = FW_TECH;
     int px = (int)floorf(size * (weight == FW_ICON ? 1.0f : FONT_K) * ui.scale + 0.5f);
     if (px < 6) px = 6;
     for (int i = 0; i < g_nfonts; ++i)
         if (g_fonts[i].weight == weight && g_fonts[i].px == px) return g_fonts[i].f;
     Font f = { 0 };
-    for (int k = 0; k < FONT_ALTS && g_font_files[weight][k]; ++k) {
+    const unsigned char* embedded = NULL;
+    int embedded_size = 0;
+    if (weight == FW_SERIF) { embedded = InstrumentSerif_Regular; embedded_size = sizeof InstrumentSerif_Regular; }
+    else if (weight == FW_TECH) { embedded = DMMono_Regular; embedded_size = sizeof DMMono_Regular; }
+    else if (weight == FW_TECH_MEDIUM) { embedded = DMMono_Medium; embedded_size = sizeof DMMono_Medium; }
+    if (embedded) {
+        int epx = (int)floorf(size * font_data_em_k(embedded, embedded_size) * ui.scale + 0.5f);
+        f = load_sharp_data(embedded, embedded_size, epx < 6 ? 6 : epx, g_text_cps, g_ntext_cps, true);
+    }
+    for (int k = 0; !f.texture.id && k < FONT_ALTS && g_font_files[weight][k]; ++k) {
         const char* path = g_font_files[weight][k];
         if (!FileExists(path)) continue;
         if (weight == FW_ICON) f = load_sharp(path, px, g_icon_cps, g_nicon_cps, false);
@@ -331,22 +357,31 @@ void ui_metal(Rectangle r, float radius)
 {
     if (r.width <= 0 || r.height <= 0) return;
     ui_rrect(r, radius, T.metal_lo);
-    /* Four nested, slanted bands build a soft diagonal sheen. They are
+    /* Overlapping slanted bands build a soft diagonal sheen. They are
      * clipped to the strip between the rounded corners, so the corners keep
      * their shape without a rounded clip path. */
     Rectangle clip = { r.x + radius, r.y, r.width - 2 * radius, r.height };
     if (clip.width > 0) {
         ui_scissor_push(clip);
         float cx = r.x + r.width * 0.42f, slant = r.height * 0.55f;
-        Color c = col_alpha(T.metal_hi, 0.09f);
-        for (int i = 0; i < 4; ++i) {
-            float hw = r.width * (0.04f + 0.055f * i);
+        Color c = col_alpha(T.metal_hi, 0.014f);
+        for (int i = 0; i < 24; ++i) {
+            float hw = r.width * (0.015f + 0.013f * i);
             Vector2 tl = { cx - hw + slant, r.y }, tr = { cx + hw + slant, r.y };
             Vector2 bl = { cx - hw - slant, r.y + r.height }, br = { cx + hw - slant, r.y + r.height };
             DrawTriangle(tl, bl, br, c);   /* raylib wants counter-clockwise order */
             DrawTriangle(tl, br, tr, c);
         }
         ui_scissor_pop();
+    }
+    /* Static brushed grain follows the rounded silhouette. No animation or
+     * random noise: resource monitoring should remain visually quiet. */
+    float rad = fminf(radius, fminf(r.width, r.height) * 0.5f);
+    for (float x = 2; x < r.width - 2; x += 3) {
+        float edge = fminf(x, r.width - x - 1);
+        float dy = edge < rad ? rad - sqrtf(fmaxf(0, rad * rad - (rad - edge) * (rad - edge))) : 0;
+        DrawRectangleRec((Rectangle){ r.x + x, r.y + dy + 1, 1, fmaxf(0, r.height - 2 * dy - 2) },
+                         col_alpha(T.metal_hi, 0.025f));
     }
     /* a faint top highlight and hairline, like light catching an edge */
     DrawRectangleRec((Rectangle){ r.x + radius, r.y + 1, fmaxf(0, r.width - 2 * radius), 1 },
@@ -566,7 +601,7 @@ void ui_frame_end(void)
 float ui_button_w(const char* label, int icon)
 {
     float w = 24;
-    if (label && label[0]) w += ui_text_w(label, 13, FW_SEMI);
+    if (label && label[0]) w += ui_text_w(label, 13, ui_control_weight());
     if (icon) w += label && label[0] ? 22 : 8;
     return w;
 }
@@ -592,8 +627,11 @@ bool ui_button(Rectangle r, const char* label, int icon, int style, bool enabled
     }
     if (hov && ui.down) bg = col_mix(bg, T.press, 0.5f);
     if (!enabled) { fg = T.faint; if (style == BTN_PRIMARY) { bg = T.hover; } }
-    ui_rrect(r, 6, bg);
-    if (bd.a) ui_rrect_line(r, 6, 1, bd);
+    float radius = T.serif ? r.height * 0.5f : 6;
+    ui_rrect(r, radius, bg);
+    if (bd.a) ui_rrect_line(r, radius, 1, bd);
+    if (T.metal && style == BTN_PRIMARY && enabled)
+        ui_rrect_line(rect_inset(r, 2, 2), radius, 1, col_alpha(T.metal_hi, 0.35f));
     float cx = r.x + 12;
     bool has_label = label && label[0];
     if (icon) {
@@ -601,7 +639,7 @@ bool ui_button(Rectangle r, const char* label, int icon, int style, bool enabled
         else ui_icon(r.x + r.width / 2, r.y + r.height / 2, icon, 14, fg);
     }
     if (has_label)
-        ui_text_fit((Rectangle){ cx, r.y, r.x + r.width - cx - 10, r.height }, label, 13, FW_SEMI, fg,
+        ui_text_fit((Rectangle){ cx, r.y, r.x + r.width - cx - 10, r.height }, label, 13, ui_control_weight(), fg,
                     icon ? AL_LEFT : AL_CENTER);
     if (hov) ui.cursor = MOUSE_CURSOR_POINTING_HAND;
     return click;
@@ -620,18 +658,20 @@ bool ui_icon_button(Rectangle r, int icon, const char* tip, bool active)
 
 bool ui_segmented(Rectangle r, const char* const* items, int n, int* sel)
 {
-    ui_rrect(r, 7, T.dark ? T.panel : T.hover);
-    ui_rrect_line(r, 7, 1, T.border);
+    float radius = T.serif ? r.height * 0.5f : 7;
+    ui_rrect(r, radius, T.dark ? T.panel : T.hover);
+    ui_rrect_line(r, radius, 1, T.border);
     float w = r.width / n;
     bool changed = false;
     for (int i = 0; i < n; ++i) {
         Rectangle c = { r.x + w * i + 2, r.y + 2, w - 4, r.height - 4 };
         bool on = *sel == i;
         bool hov = ui_hover(c);
-        if (on) ui_rrect(c, 5, T.dark ? T.press : T.panel);
-        else if (hov) ui_rrect(c, 5, col_alpha(T.hover, 0.7f));
-        if (on && !T.dark) ui_rrect_line(c, 5, 1, T.border);
-        ui_text_fit(c, items[i], 12.5f, on ? FW_SEMI : FW_REG, on ? T.text : T.dim, AL_CENTER);
+        float cr = T.serif ? c.height * 0.5f : 5;
+        if (on) ui_rrect(c, cr, T.dark ? T.press : T.panel);
+        else if (hov) ui_rrect(c, cr, col_alpha(T.hover, 0.7f));
+        if (on && !T.dark) ui_rrect_line(c, cr, 1, T.border);
+        ui_text_fit(c, items[i], 12.5f, on ? ui_control_weight() : ui_label_weight(), on ? T.text : T.dim, AL_CENTER);
         if (hov) ui.cursor = MOUSE_CURSOR_POINTING_HAND;
         if (ui_clicked(c) && !on) { *sel = i; changed = true; }
     }

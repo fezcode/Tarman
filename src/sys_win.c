@@ -254,13 +254,100 @@ void sys_attach_console(void)
     }
 }
 
+/* ---- per-user data folders ----------------------------------------------------
+ *
+ * Fezcode convention, so the uninstaller's purge finds everything in one place:
+ *   settings  %APPDATA%\fezcode\Tarman            (settings.ini)
+ *   data      %LOCALAPPDATA%\fezcode\Tarman       (logs\ and anything else)
+ * Builds before 0.2.0 kept both under %APPDATA%\Tarman; sys_migrate_data()
+ * moves that folder's contents over once and removes it. */
+
+/* <known folder>\fezcode\Tarman[\sub], creating each level: Win32 has no mkdir -p */
+static bool fez_dir(int csidl, const wchar_t* sub, wchar_t dir[MAX_PATH])
+{
+    if (FAILED(SHGetFolderPathW(NULL, csidl, NULL, 0, dir))) return false;
+    if (wcslen(dir) + 32 + (sub ? wcslen(sub) : 0) >= MAX_PATH) return false;
+    wcscat(dir, L"\\fezcode");
+    CreateDirectoryW(dir, NULL);
+    wcscat(dir, L"\\Tarman");
+    CreateDirectoryW(dir, NULL);
+    if (sub) {
+        wcscat(dir, L"\\");
+        wcscat(dir, sub);
+        CreateDirectoryW(dir, NULL);
+    }
+    return true;
+}
+
+/* Merge without replacing or deleting either copy of a conflicting file.
+ * The new home wins; the older copy gets a numbered .migrated-N suffix.
+ * Locked files stay behind for the next start. Never follow directory links. */
+static void move_tree(const wchar_t* from, const wchar_t* to, bool skip_logs)
+{
+    wchar_t pat[MAX_PATH], src[MAX_PATH], dst[MAX_PATH];
+    DWORD from_attr = GetFileAttributesW(from);
+    if (from_attr == INVALID_FILE_ATTRIBUTES || !(from_attr & FILE_ATTRIBUTE_DIRECTORY) ||
+        (from_attr & FILE_ATTRIBUTE_REPARSE_POINT)) return;
+    if (_snwprintf(pat, MAX_PATH, L"%ls\\*", from) < 0) return;
+    CreateDirectoryW(to, NULL);
+    DWORD to_attr = GetFileAttributesW(to);
+    if (to_attr == INVALID_FILE_ATTRIBUTES || !(to_attr & FILE_ATTRIBUTE_DIRECTORY) ||
+        (to_attr & FILE_ATTRIBUTE_REPARSE_POINT)) return;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pat, &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
+            if (skip_logs && !_wcsicmp(fd.cFileName, L"logs")) continue;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;
+            if (_snwprintf(src, MAX_PATH, L"%ls\\%ls", from, fd.cFileName) < 0 ||
+                _snwprintf(dst, MAX_PATH, L"%ls\\%ls", to, fd.cFileName) < 0) continue;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                move_tree(src, dst, false);
+            } else if (!MoveFileExW(src, dst, MOVEFILE_COPY_ALLOWED)) {   /* no REPLACE_EXISTING */
+                DWORD e = GetLastError();
+                if (e == ERROR_ALREADY_EXISTS || e == ERROR_FILE_EXISTS) {
+                    wchar_t backup[MAX_PATH];
+                    for (int i = 1; i <= 1000; ++i) {
+                        if (_snwprintf(backup, MAX_PATH, L"%ls.migrated-%d", dst, i) < 0) break;
+                        if (MoveFileExW(src, backup, MOVEFILE_COPY_ALLOWED)) break;
+                        e = GetLastError();
+                        if (e != ERROR_ALREADY_EXISTS && e != ERROR_FILE_EXISTS) break;
+                    }
+                }
+            }
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    RemoveDirectoryW(from);   /* only succeeds once empty */
+}
+
+void sys_migrate_data(void)
+{
+    wchar_t old_dir[MAX_PATH], old_logs[MAX_PATH], cfg[MAX_PATH], logs[MAX_PATH];
+    if (FAILED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, old_dir))) return;
+    if (wcslen(old_dir) + 16 >= MAX_PATH) return;
+    wcscat(old_dir, L"\\Tarman");
+    DWORD a = GetFileAttributesW(old_dir);
+    if (a == INVALID_FILE_ATTRIBUTES || !(a & FILE_ATTRIBUTE_DIRECTORY)) return;   /* nothing to do */
+    if (!fez_dir(CSIDL_APPDATA, NULL, cfg) || !fez_dir(CSIDL_LOCAL_APPDATA, L"logs", logs)) return;
+
+    wcscpy(old_logs, old_dir);
+    wcscat(old_logs, L"\\logs");
+    a = GetFileAttributesW(old_logs);
+    if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY))
+        move_tree(old_logs, logs, false); /* logs are data: %LOCALAPPDATA% */
+    /* A locked log must stay at its old path for a later retry, rather than
+     * being swept into the roaming settings directory by this second pass. */
+    move_tree(old_dir, cfg, true);
+}
+
 bool sys_settings_path(char* out, int n)
 {
     wchar_t dir[MAX_PATH];
-    if (FAILED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, dir))) return false;
-    wcsncat(dir, L"\\Tarman", MAX_PATH - wcslen(dir) - 1);
-    CreateDirectoryW(dir, NULL);
-    wcsncat(dir, L"\\settings.ini", MAX_PATH - wcslen(dir) - 1);
+    if (!fez_dir(CSIDL_APPDATA, NULL, dir)) return false;
+    if (wcslen(dir) + 14 >= MAX_PATH) return false;
+    wcscat(dir, L"\\settings.ini");
     w2u(dir, out, n);
     return true;
 }
@@ -280,11 +367,7 @@ static bool reg_str(HKEY root, const wchar_t* key, const wchar_t* val, char* out
 bool sys_log_dir(char* out, int n)
 {
     wchar_t dir[MAX_PATH];
-    if (FAILED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, dir))) return false;
-    wcsncat(dir, L"\\Tarman", MAX_PATH - wcslen(dir) - 1);
-    CreateDirectoryW(dir, NULL);
-    wcsncat(dir, L"\\logs", MAX_PATH - wcslen(dir) - 1);
-    CreateDirectoryW(dir, NULL);
+    if (!fez_dir(CSIDL_LOCAL_APPDATA, L"logs", dir)) return false;
     w2u(dir, out, n);
     return true;
 }

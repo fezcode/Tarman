@@ -79,7 +79,7 @@ Search online, Properties, and Copy name / PID / path / command line.
   message or the raw XML for each event, and a jump straight to the process that logged it.
   It also shows Tarman's own **activity log**: every action you took, every failure, and every
   process start and exit the sampler saw. Actions and errors are also written to
-  `%APPDATA%\Tarman\logs`.
+  `%LOCALAPPDATA%\fezcode\Tarman\logs`.
 - **Firmware.** A read-only view of BIOS / UEFI: vendor, version and capabilities; Secure Boot,
   TPM, virtualization and VBS state; system, motherboard and processor SMBIOS data; memory slots
   with part numbers. With administrator rights it also shows the UEFI boot order. It is read when
@@ -89,14 +89,18 @@ Search online, Properties, and Copy name / PID / path / command line.
 - **Hisashi menubar.** File, Edit, View, Process and Help menus appear in
   [Hisashi](https://github.com/fezcode/Hisashi)'s macOS-style menubar over the hoswl protocol,
   with live check marks and enabled states. You can switch this off in Settings.
-- **Dark and light themes**, interface scaling on top of display scaling, always on top, and a
+- **Stone, Dark and Light themes.** Stone brings the Tarman showcase's warm gray canvas,
+  champagne accents, brushed charcoal panels, Instrument Serif headings and DM Mono controls
+  into the native app. It is the default for new settings; existing theme choices are preserved.
+  Choose it in **Settings > Appearance > Theme**, or launch with `--stone`. Fonts are bundled
+  for offline use. Interface scaling on top of display scaling, always on top, and a
   frame rate that drops when you are not interacting, so the monitor stays quiet.
 
 <p align="center"><img src="docs/screenshots/events.png" alt="Events page" width="92%"></p>
 
 ## Install
 
-Download `Tarman-Setup-0.1.3.exe` from the
+Download `Tarman-Setup-0.2.1.exe` from the
 [latest release](https://github.com/fezcode/Tarman/releases/latest) and run it. It installs per user
 into `%LOCALAPPDATA%\Programs\Tarman` and needs no administrator rights. The wizard offers
 Desktop and Start Menu shortcuts, and Tarman appears in *Apps & features* for a clean uninstall.
@@ -104,8 +108,11 @@ Desktop and Start Menu shortcuts, and Tarman appears in *Apps & features* for a 
 Tarman opts in to the [Airlift](https://github.com/fezcode/Airlift) catalog, so Airlift can install and
 update it alongside the other Fezcode apps.
 
-Settings and activity logs live in `%APPDATA%\Tarman`. Uninstalling keeps them unless you tick
+Settings live in `%APPDATA%\fezcode\Tarman` and activity logs in `%LOCALAPPDATA%\fezcode\Tarman`
+(older versions used `%APPDATA%\Tarman`; Tarman moves it over on first start). Uninstalling keeps them unless you tick
 *Also remove my settings and data*.
+If an old filename already exists at the new location, its older copy is retained with a
+`.migrated-N` suffix. Locked files stay at their original location until a later startup can move them.
 
 ### Administrator rights
 
@@ -145,7 +152,8 @@ tarman [options]
   -v, --version           Print the version
   --page NAME             Open on a page: processes, performance, analysis, network,
                           disk, memory, startup, users, services, events, firmware, settings
-  --light | --dark        Force the theme for this run
+  --light | --dark | --stone
+                          Force the theme for this run
   --size WxH              Window size in logical pixels for this run
   --window SECONDS        Visible time window: 60, 300 or 600
   --log CHANNEL           Events page source, e.g. System (default: Tarman activity)
@@ -197,6 +205,10 @@ happening at 14:32:05" a single array read.
 ## License
 
 [MIT](LICENSE.txt) &copy; 2026 Fezcode
+
+The bundled Instrument Serif and DM Mono fonts use the SIL Open Font License 1.1;
+see [font sources and licenses](resources/fonts/README.md). The shipped license file
+includes these notices.
 
 ## Application icon
 
