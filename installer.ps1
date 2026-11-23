@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Builds the app (unless -SkipBuild), verifies the version is consistent across
-  the sources AND the built exe, makes sure a GUI-subsystem forge.exe exists in
+  the sources AND the built exe, makes sure a Forge 2 toolkit exists in
   the sibling ..\Forge project, then validates forge.toml and stamps the payload
   into dist\installer\Tarman-Setup-<version>.exe. Superseded installers in
   dist\installer are pruned once the new one is verified (each is already a
@@ -25,8 +25,7 @@ Set-Location $PSScriptRoot
 
 $forgeRoot   = Resolve-Path $ForgeDir
 $forgeGui    = Join-Path $forgeRoot "build\forge.exe"
-$forgeSrc    = Join-Path $forgeRoot "cmd\forge"
-$uninstaller = Join-Path $forgeRoot "build\uninstall.exe"
+$uninstaller = Join-Path $forgeRoot "build\stub.exe"
 $outDir      = Join-Path $PSScriptRoot "dist\installer"
 
 if (-not $SkipBuild) {
@@ -51,30 +50,13 @@ foreach ($f in @("build\tarman.exe", "build\glfw3.dll", "build\LICENSE.txt", "LI
     if (-not (Test-Path (Join-Path $PSScriptRoot $f))) { throw "Missing payload file: $f" }
 }
 
-Write-Host "`n[3/4] Ensuring a GUI-subsystem forge.exe..." -ForegroundColor Cyan
-if (-not (Test-Path $uninstaller)) {
-    throw "Missing $uninstaller. Run 'gobake build' in $forgeRoot first."
+Write-Host "`n[3/4] Checking prebuilt Forge 2..." -ForegroundColor Cyan
+foreach ($relative in @('build/forge.exe', 'build/stub.exe', 'build/wizard/Forge.Wizard.exe', 'build/wizard/libSkiaSharp.dll', 'build/wizard/libHarfBuzzSharp.dll')) {
+    $required = Join-Path $forgeRoot $relative
+    if (-not (Test-Path -LiteralPath $required)) { throw "Missing $required. Run 'gobake build' in $forgeRoot first." }
 }
-$needBuild = -not (Test-Path $forgeGui)
-if (-not $needBuild) {
-    $srcLatest = (Get-ChildItem $forgeSrc -Recurse -Filter *.go |
-                  Sort-Object LastWriteTime -Descending |
-                  Select-Object -First 1).LastWriteTime
-    if ((Get-Item $forgeGui).LastWriteTime -lt $srcLatest) { $needBuild = $true }
-}
-if ($needBuild) {
-    Write-Host "  building $forgeGui..." -ForegroundColor DarkGray
-    Push-Location $forgeRoot
-    try {
-        # -H windowsgui: no console window when the installer runs. Not stripped:
-        # a symbol-free Go binary that unpacks an exe is the shape Defender's ML
-        # classifier scores as a dropper.
-        go build -tags "desktop,production" -ldflags "-H windowsgui" -o build\forge.exe ./cmd/forge/
-        if ($LASTEXITCODE -ne 0) { throw "go build forge.exe failed (exit $LASTEXITCODE)" }
-    } finally { Pop-Location }
-} else {
-    Write-Host "  up to date: $forgeGui" -ForegroundColor DarkGray
-}
+$forgeVersion = & $forgeGui --version
+if ($LASTEXITCODE -ne 0 -or $forgeVersion -notmatch '^forge v2\.') { throw 'Forge 2 is required. Rebuild the sibling Forge toolkit.' }
 
 Write-Host "`n[4/4] Building Setup.exe..." -ForegroundColor Cyan
 
