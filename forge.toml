@@ -18,8 +18,8 @@ support_url = "https://github.com/fezcode/Tarman/issues"
 comments    = "Task manager and resource monitor with a 10-minute moving window"
 
 [ui]
-# available themes: atelier, aurora, console, mica, vellum
-theme        = "mica"
+# available themes: glass, huh, console, mica
+theme        = "glass"
 window_title = "Tarman ${app.version} Setup"
 
 [install]
